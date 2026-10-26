@@ -17,7 +17,7 @@
 #define DEFAULT_LON 151.2093
 #define TLE_MAX_AGE_DAYS 14.0
 #define REQUEST_EVERY_MINUTES 30
-#define ROLL_HOURS 4
+#define DEFAULT_ROLL_HOURS 4
 #define ROLL_FORWARD_MS 900
 #define ROLL_HOLD_MS 500
 #define ROLL_BACK_MS 20
@@ -41,6 +41,7 @@
 #define TIME_CAP_TOP 26  // the same for FONT_STARLOOM_88
 #define DATE_CAP_TOP 56
 #define TIME_DIGIT_TOP 83
+#define TIME_BOLD 1
 #define READOUT_DIGIT_TOP 163
 #define READOUT_GAP 16
 
@@ -50,7 +51,27 @@ enum {
   PERSIST_TLE,
   PERSIST_TEMP,
   PERSIST_WCODE,
+  PERSIST_PREFS,
 };
+
+// What each readout slot shows; the numbers are the settings page's values.
+enum {
+  READOUT_NONE,
+  READOUT_BATTERY,
+  READOUT_WEATHER,
+  READOUT_HEART,
+  READOUT_STEPS,
+  READOUT_KINDS,
+};
+#define READOUT_SLOTS 2
+
+// Chosen on the phone's settings page.
+typedef struct {
+  uint8_t readout[READOUT_SLOTS];
+  bool fahrenheit;
+  bool roll;
+  uint8_t roll_hours;
+} Prefs;
 
 typedef struct {
   double lat;
@@ -74,6 +95,10 @@ static Window *s_window;
 static Layer *s_canvas;
 static Settings s_settings = {.lat = DEFAULT_LAT, .lon = DEFAULT_LON, .temp = NO_TEMP};
 static Sky s_sky;
+static Prefs s_prefs = {.readout = {READOUT_BATTERY, READOUT_WEATHER}, .roll = true,
+                        .roll_hours = DEFAULT_ROLL_HOURS};
+static int s_heart_bpm;  // 0 while unknown
+static int s_steps = -1;  // -1 while unknown
 static GFont s_font_time;
 static GFont s_font_small;
 static GFont s_font_glyph;
@@ -426,11 +451,10 @@ static void draw_zodiac_ticks(GContext *ctx, GPoint centre, double hw, double hh
 // digits cuts the icon away where they cross, so the icon wraps round the
 // number instead of standing beside it.
 
-// The battery reaches this far left of its digits, and the cloud's digits sit
-// this far into the cloud, which is at least WEATHER_ICON_W across.
-#define BATTERY_LEAD 7
-#define WEATHER_LEAD 9
-#define WEATHER_ICON_W 36
+// How far each readout's icon reaches left of its digits, and how wide the
+// icon is at least, by readout kind.
+static const int8_t s_readout_lead[READOUT_KINDS] = {0, 7, 9, 12, 13};
+static const int8_t s_readout_min_w[READOUT_KINDS] = {0, 0, 36, 27, 0};
 
 static GSize small_text_size(const char *text) {
   return graphics_text_layout_get_content_size(text, s_font_small, GRect(0, 0, 120, 60),
@@ -447,7 +471,7 @@ static void draw_digits(GContext *ctx, const char *text, int x, int w) {
 
 // An upright cell whose right side the digits cover.
 static void draw_battery_icon(GContext *ctx, int digits_x) {
-  int left = digits_x - BATTERY_LEAD, top = READOUT_DIGIT_TOP - 7;
+  int left = digits_x - s_readout_lead[READOUT_BATTERY], top = READOUT_DIGIT_TOP - 7;
   graphics_context_set_fill_color(ctx, s_battery <= 20 ? GColorRed
                                        : (s_charging ? GColorYellow : GColorGreen));
   graphics_fill_rect(ctx, GRect(left + 3, top - 3, 6, 3), 0, GCornerNone);
@@ -464,9 +488,11 @@ static void cloud_shape(GContext *ctx, GPoint o, int grow) {
   graphics_fill_rect(ctx, GRect(o.x + 8, o.y + 14 - grow, 23, 6 + grow * 2), 0, GCornerNone);
 }
 
-// o is the icon's origin: its visible left edge is o.x + 2, and the digits go
-// WEATHER_LEAD in from there and 14 below its top, under the left bumps.
-static void draw_weather_icon(GContext *ctx, GPoint o, int code) {
+// The cloud's visible left edge is 2 px right of o, the digits 9 px further
+// in and 14 px below its top, under the left bumps.
+static void draw_weather_icon(GContext *ctx, int digits_x) {
+  GPoint o = GPoint(digits_x - s_readout_lead[READOUT_WEATHER] - 2, READOUT_DIGIT_TOP - 14);
+  int code = (int)s_settings.weather_code;
   GColor blue = GColorVividCerulean;
   if (code <= 1) {
     graphics_context_set_stroke_color(ctx, GColorChromeYellow);
@@ -507,28 +533,100 @@ static void draw_weather_icon(GContext *ctx, GPoint o, int code) {
   }
 }
 
-// Battery and weather side by side, centred together under the time.
-static void draw_readouts(GContext *ctx, int cx) {
-  char battery[12], temp[12];
-  snprintf(battery, sizeof(battery), "%d", s_battery);
-  int battery_w = small_text_size(battery).w;
-  int width = BATTERY_LEAD + battery_w;
-  bool has_temp = s_settings.temp != NO_TEMP;
-  int temp_w = 0;
-  if (has_temp) {
-    snprintf(temp, sizeof(temp), "%d", (int)s_settings.temp);
-    temp_w = small_text_size(temp).w;
-    int weather_w = WEATHER_LEAD + temp_w;
-    width += READOUT_GAP + (weather_w > WEATHER_ICON_W ? weather_w : WEATHER_ICON_W);
+static void heart_shape(GContext *ctx, GPoint o, int grow) {
+  graphics_fill_circle(ctx, GPoint(o.x + 9, o.y + 9), 7 + grow);
+  graphics_fill_circle(ctx, GPoint(o.x + 22, o.y + 9), 7 + grow);
+  GPoint points[3] = {GPoint(o.x + 2 - grow, o.y + 11), GPoint(o.x + 29 + grow, o.y + 11),
+                      GPoint(o.x + 15, o.y + 26 + grow)};
+  GPathInfo info = {.num_points = 3, .points = points};
+  GPath *path = gpath_create(&info);
+  if (!path) return;
+  gpath_draw_filled(ctx, path);
+  gpath_destroy(path);
+}
+
+// A heart outline whose left half shows beside the digits and whose right
+// lobe shows above them.
+static void draw_heart_icon(GContext *ctx, int digits_x) {
+  GPoint o = GPoint(digits_x - s_readout_lead[READOUT_HEART] - 2, READOUT_DIGIT_TOP - 15);
+  graphics_context_set_fill_color(ctx, GColorFolly);
+  heart_shape(ctx, o, 0);
+  graphics_context_set_fill_color(ctx, GColorBlack);
+  heart_shape(ctx, o, -2);
+}
+
+// Two footprints, one a step ahead of the other, left of the digits.
+static void draw_steps_icon(GContext *ctx, int digits_x) {
+  int left = digits_x - s_readout_lead[READOUT_STEPS], top = READOUT_DIGIT_TOP;
+  graphics_context_set_fill_color(ctx, GColorOrange);
+  graphics_fill_rect(ctx, GRect(left, top - 2, 5, 9), 2, GCornersAll);
+  graphics_fill_rect(ctx, GRect(left, top + 9, 5, 4), 1, GCornersAll);
+  graphics_fill_rect(ctx, GRect(left + 6, top - 9, 5, 9), 2, GCornersAll);
+  graphics_fill_rect(ctx, GRect(left + 6, top + 2, 5, 4), 1, GCornersAll);
+}
+
+static int celsius_shown(int celsius) {
+  if (!s_prefs.fahrenheit) return celsius;
+  int tenths = celsius * 18 + 320;
+  return tenths >= 0 ? (tenths + 5) / 10 : (tenths - 5) / 10;
+}
+
+// The number a readout shows, or false when it has nothing to show at all.
+static bool readout_text(int kind, char *text, size_t size) {
+  switch (kind) {
+    case READOUT_BATTERY:
+      snprintf(text, size, "%d", s_battery);
+      return true;
+    case READOUT_WEATHER:
+      if (s_settings.temp == NO_TEMP) return false;
+      snprintf(text, size, "%d", celsius_shown((int)s_settings.temp));
+      return true;
+    case READOUT_HEART:
+      if (s_heart_bpm > 0) snprintf(text, size, "%d", s_heart_bpm);
+      else snprintf(text, size, "--");
+      return true;
+    case READOUT_STEPS:
+      if (s_steps >= 0) snprintf(text, size, "%d", s_steps);
+      else snprintf(text, size, "--");
+      return true;
+    default:
+      return false;
   }
-  int battery_x = cx - width / 2 + BATTERY_LEAD;
-  draw_battery_icon(ctx, battery_x);
-  draw_digits(ctx, battery, battery_x, battery_w);
-  if (has_temp) {
-    int temp_x = battery_x + battery_w + READOUT_GAP + WEATHER_LEAD;
-    draw_weather_icon(ctx, GPoint(temp_x - WEATHER_LEAD - 2, READOUT_DIGIT_TOP - 14),
-                      (int)s_settings.weather_code);
-    draw_digits(ctx, temp, temp_x, temp_w);
+}
+
+static void draw_readout_icon(GContext *ctx, int kind, int digits_x) {
+  switch (kind) {
+    case READOUT_BATTERY: draw_battery_icon(ctx, digits_x); break;
+    case READOUT_WEATHER: draw_weather_icon(ctx, digits_x); break;
+    case READOUT_HEART: draw_heart_icon(ctx, digits_x); break;
+    case READOUT_STEPS: draw_steps_icon(ctx, digits_x); break;
+    default: break;
+  }
+}
+
+// The chosen readouts side by side, centred together under the time.
+static void draw_readouts(GContext *ctx, int cx) {
+  char text[READOUT_SLOTS][12];
+  int digits_w[READOUT_SLOTS], width[READOUT_SLOTS];
+  bool shown[READOUT_SLOTS];
+  int total = -READOUT_GAP;
+  for (int slot = 0; slot < READOUT_SLOTS; slot++) {
+    int kind = s_prefs.readout[slot];
+    shown[slot] = readout_text(kind, text[slot], sizeof(text[slot]));
+    if (!shown[slot]) continue;
+    digits_w[slot] = small_text_size(text[slot]).w;
+    width[slot] = s_readout_lead[kind] + digits_w[slot];
+    if (width[slot] < s_readout_min_w[kind]) width[slot] = s_readout_min_w[kind];
+    total += width[slot] + READOUT_GAP;
+  }
+  int x = cx - total / 2;
+  for (int slot = 0; slot < READOUT_SLOTS; slot++) {
+    if (!shown[slot]) continue;
+    int kind = s_prefs.readout[slot];
+    int digits_x = x + s_readout_lead[kind];
+    draw_readout_icon(ctx, kind, digits_x);
+    draw_digits(ctx, text[slot], digits_x, digits_w[slot]);
+    x += width[slot] + READOUT_GAP;
   }
 }
 
@@ -555,9 +653,15 @@ static void canvas_update(Layer *layer, GContext *ctx) {
   graphics_draw_text(ctx, s_date_text, s_font_small,
                      GRect(0, DATE_CAP_TOP - SMALL_CAP_TOP, bounds.size.w, 40),
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
-  graphics_draw_text(ctx, s_time_text, s_font_time,
-                     GRect(0, TIME_DIGIT_TOP - TIME_CAP_TOP, bounds.size.w, 120),
-                     GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+  // Drawn again shifted by up to TIME_BOLD px each way, which thickens every
+  // stroke with square corners.
+  for (int dy = 0; dy <= TIME_BOLD; dy++) {
+    for (int dx = 0; dx <= TIME_BOLD; dx++) {
+      graphics_draw_text(ctx, s_time_text, s_font_time,
+                         GRect(dx, TIME_DIGIT_TOP - TIME_CAP_TOP + dy, bounds.size.w, 120),
+                         GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+    }
+  }
 
   draw_readouts(ctx, centre.x);
 }
@@ -595,6 +699,46 @@ static void load_tle(const char *both_lines) {
   }
 }
 
+// The settings page sends a select's value as text and a toggle or slider's
+// as a number.
+static int tuple_int(const Tuple *tuple) {
+  if (tuple->type == TUPLE_CSTRING) {
+    int value = 0;
+    for (const char *c = tuple->value->cstring; *c >= '0' && *c <= '9'; c++) value = value * 10 + (*c - '0');
+    return value;
+  }
+  switch (tuple->length) {
+    case 1: return tuple->type == TUPLE_INT ? tuple->value->int8 : tuple->value->uint8;
+    case 2: return tuple->type == TUPLE_INT ? tuple->value->int16 : tuple->value->uint16;
+    default: return (int)tuple->value->int32;
+  }
+}
+
+static bool read_prefs(DictionaryIterator *iter) {
+  const uint32_t readout_keys[READOUT_SLOTS] = {MESSAGE_KEY_READOUT_LEFT, MESSAGE_KEY_READOUT_RIGHT};
+  bool changed = false;
+  for (int slot = 0; slot < READOUT_SLOTS; slot++) {
+    Tuple *tuple = dict_find(iter, readout_keys[slot]);
+    int kind = tuple ? tuple_int(tuple) : -1;
+    if (kind >= 0 && kind < READOUT_KINDS) {
+      s_prefs.readout[slot] = (uint8_t)kind;
+      changed = true;
+    }
+  }
+  Tuple *unit = dict_find(iter, MESSAGE_KEY_TEMP_UNIT);
+  if (unit) { s_prefs.fahrenheit = tuple_int(unit) == 1; changed = true; }
+  Tuple *roll = dict_find(iter, MESSAGE_KEY_ROLL_ON);
+  if (roll) { s_prefs.roll = tuple_int(roll) != 0; changed = true; }
+  Tuple *hours = dict_find(iter, MESSAGE_KEY_ROLL_HOURS);
+  if (hours && tuple_int(hours) >= 1 && tuple_int(hours) <= 24) {
+    s_prefs.roll_hours = (uint8_t)tuple_int(hours);
+    changed = true;
+  }
+  return changed;
+}
+
+static void apply_prefs(void);
+
 static void inbox_received(DictionaryIterator *iter, void *context) {
   Tuple *lat = dict_find(iter, MESSAGE_KEY_LAT);
   Tuple *lon = dict_find(iter, MESSAGE_KEY_LON);
@@ -617,6 +761,10 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
     persist_write_int(PERSIST_TEMP, temp->value->int32);
     persist_write_int(PERSIST_WCODE, code->value->int32);
   }
+  if (read_prefs(iter)) {
+    persist_write_data(PERSIST_PREFS, &s_prefs, sizeof(s_prefs));
+    apply_prefs();
+  }
   refresh();
 }
 
@@ -625,7 +773,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   if (++s_minutes_since_request >= REQUEST_EVERY_MINUTES) request_refresh();
 }
 
-// A tap or flick of the wrist rolls the sky ROLL_HOURS ahead, easing in
+// A tap or flick of the wrist rolls the sky s_prefs.roll_hours ahead, easing in
 // and out, holds there for a moment, then snaps straight back to now.
 static void roll_update(Animation *animation, const AnimationProgress progress) {
   double ms = (double)progress / ANIMATION_NORMALIZED_MAX * ROLL_TOTAL_MS;
@@ -639,7 +787,7 @@ static void roll_update(Animation *animation, const AnimationProgress progress) 
     double t = 1.0 - (ms - ROLL_FORWARD_MS - ROLL_HOLD_MS) / ROLL_BACK_MS;
     ahead = t * t;
   }
-  s_offset = (time_t)(ahead * ROLL_HOURS * 3600);
+  s_offset = (time_t)(ahead * s_prefs.roll_hours * 3600);
   refresh();
 }
 
@@ -687,6 +835,57 @@ static void touch_handler(const TouchEvent *event, void *context) {
   }
 }
 
+static bool shows_readout(int kind) {
+  for (int slot = 0; slot < READOUT_SLOTS; slot++) {
+    if (s_prefs.readout[slot] == kind) return true;
+  }
+  return false;
+}
+
+static void update_health(void) {
+  time_t now = time(NULL);
+  s_steps = -1;
+  if (health_service_metric_accessible(HealthMetricStepCount, time_start_of_today(), now) &
+      HealthServiceAccessibilityMaskAvailable) {
+    s_steps = (int)health_service_sum_today(HealthMetricStepCount);
+  }
+  s_heart_bpm = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+}
+
+static void health_handler(HealthEventType event, void *context) {
+  if (event == HealthEventMovementUpdate || event == HealthEventHeartRateUpdate ||
+      event == HealthEventSignificantUpdate) {
+    update_health();
+    layer_mark_dirty(s_canvas);
+  }
+}
+
+// Listens only for what the settings use: the touch sensor and health
+// tracking stay off unless something on the face needs them.
+static void apply_prefs(void) {
+  static bool rolling, health;
+  if (s_prefs.roll != rolling) {
+    rolling = s_prefs.roll;
+    if (rolling) {
+      accel_tap_service_subscribe(tap_handler);
+      touch_service_subscribe(touch_handler, NULL);
+    } else {
+      touch_service_unsubscribe();
+      accel_tap_service_unsubscribe();
+    }
+  }
+  bool wants_health = shows_readout(READOUT_HEART) || shows_readout(READOUT_STEPS);
+  if (wants_health != health) {
+    health = wants_health;
+    if (health) {
+      health_service_events_subscribe(health_handler, NULL);
+      update_health();
+    } else {
+      health_service_events_unsubscribe();
+    }
+  }
+}
+
 static void battery_handler(BatteryChargeState state) {
   s_battery = state.charge_percent;
   s_charging = state.is_charging;
@@ -705,6 +904,9 @@ static void load_settings(void) {
   if (persist_exists(PERSIST_TEMP) && persist_exists(PERSIST_WCODE)) {
     s_settings.temp = persist_read_int(PERSIST_TEMP);
     s_settings.weather_code = persist_read_int(PERSIST_WCODE);
+  }
+  if (persist_get_size(PERSIST_PREFS) == (int)sizeof(s_prefs)) {
+    persist_read_data(PERSIST_PREFS, &s_prefs, sizeof(s_prefs));
   }
 }
 
@@ -736,15 +938,15 @@ static void init(void) {
 
   battery_state_service_subscribe(battery_handler);
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
-  accel_tap_service_subscribe(tap_handler);
-  touch_service_subscribe(touch_handler, NULL);
+  apply_prefs();
   app_message_register_inbox_received(inbox_received);
   app_message_open(256, 32);
 }
 
 static void deinit(void) {
-  touch_service_unsubscribe();
-  accel_tap_service_unsubscribe();
+  s_prefs.roll = false;
+  s_prefs.readout[0] = s_prefs.readout[1] = READOUT_NONE;
+  apply_prefs();
   tick_timer_service_unsubscribe();
   battery_state_service_unsubscribe();
   window_destroy(s_window);

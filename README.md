@@ -16,11 +16,18 @@ are, alongside the usual time, date, battery and weather. Target: Pebble Time
 - **Inner band** carries the twelve zodiac constellations on the same
   mapping, so the whole thing turns together once a day. White ticks mark
   every 30 degrees of longitude, where one sign hands over to the next.
-- **Readouts** under the time: battery charge and temperature, as bare
-  numbers laid over their icons.
-- **Tap the screen or flick your wrist** and the sky rolls 4 hours ahead,
-  pauses, then snaps back to now; the clock keeps the real time (`ROLL_*`
-  in `main.c`). Listening for touch keeps the touch sensor powered.
+- **Readouts** under the time: two numbers laid over their icons, each one
+  battery, weather, heart rate, steps today or nothing.
+- **Tap the screen or flick your wrist** and the sky rolls a few hours
+  ahead, pauses, then snaps back to now; the clock keeps the real time.
+
+## Settings
+
+The gear beside Nadir in the phone app opens its settings page
+(`src/pkjs/config.json`, built with pebble-clay): what each readout shows,
+Celsius or Fahrenheit, whether a tap rolls the sky, and by how many hours.
+The watch keeps the choices, so they survive a restart. The touch sensor and
+health tracking are only switched on when a setting needs them.
 - **The ISS** is not on the ecliptic, so it is placed by elevation instead:
   straight up is the top of the ring, the horizon is the middle of either
   side, and it goes to the left or right of the ring by whether it is in the

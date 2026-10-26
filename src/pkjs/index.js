@@ -2,7 +2,11 @@
 // orbital elements and the current weather, and hands them to the watch.
 // The watch does all the sky maths itself, so it keeps working offline.
 
-var TLE_URL = 'https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=tle';
+// The settings page; Clay sends its choices to the watch when it is saved.
+var Clay = require('pebble-clay');
+var clay = new Clay(require('./config.json'));
+
+var TLE_URL ='https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=tle';
 var TLE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 function fetchText(url, done) {

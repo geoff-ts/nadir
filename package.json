@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "keywords": ["pebble-app"],
   "private": true,
-  "dependencies": {},
+  "dependencies": {
+    "pebble-clay": "^1.0.4"
+  },
   "pebble": {
     "displayName": "Nadir",
     "uuid": "16183a4f-c48d-4702-8a48-1211031a8115",
@@ -14,8 +16,11 @@
     "watchapp": {
       "watchface": true
     },
-    "capabilities": ["location"],
-    "messageKeys": ["REQUEST", "LAT", "LON", "TLE_LINES", "TEMP", "WCODE"],
+    "capabilities": ["location", "configurable", "health"],
+    "messageKeys": [
+      "REQUEST", "LAT", "LON", "TLE_LINES", "TEMP", "WCODE",
+      "READOUT_LEFT", "READOUT_RIGHT", "TEMP_UNIT", "ROLL_ON", "ROLL_HOURS"
+    ],
     "resources": {
       "media": [
         {
