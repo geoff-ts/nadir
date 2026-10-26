@@ -29,7 +29,7 @@ portal puts a listing live straight away; there is no separate review step.
 | Category | Not asked for watchfaces (watch apps only) |
 | Description | See below |
 | Screenshots | At least one per supported platform. Nadir supports only Emery: `docs/screenshots/emery-*.png`, 200 x 228, unframed |
-| Banner | Optional for watchfaces |
+| Banner | Optional for watchfaces: `docs/banner.png`, 720 x 320, drawn by `tools/make-banner.py` |
 | Icons | Watch apps only; not needed |
 | Website / source URL | Optional: the public repository |
 | Release notes | Required for the first upload; see below |
