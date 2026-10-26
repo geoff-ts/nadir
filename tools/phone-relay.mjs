@@ -7,18 +7,20 @@
 //   node tools/phone-relay.mjs [relay-port]      (default 9124; Ctrl-C to stop)
 //   wsl -d pebble -- bash tools/wsl-build.sh install-phone 172.24.64.1:9124
 //
-// 172.24.64.1 is the Windows side of WSL's virtual network; `ip route` inside
-// the distro shows it if it ever changes. The phone must be unlocked for adb.
+// WSL_HOST is the Windows side of WSL's virtual network (`ip route` inside the
+// distro shows it; 172.24.64.1 is only an example). ADB is the adb binary if it
+// is not on PATH, and ANDROID_SERIAL picks a phone when more than one is
+// plugged in. The phone must be unlocked for adb.
 import { execFileSync } from 'node:child_process'
 import { createServer, connect } from 'node:net'
 
-const ADB = process.env.ADB ?? 'D:/Android/Sdk/platform-tools/adb.exe'
+const ADB = process.env.ADB ?? 'adb'
 const SERIAL = process.env.ANDROID_SERIAL
 const FORWARD_PORT = 9123
 const RELAY_PORT = Number(process.argv[2] ?? 9124)
 const WSL_HOST = process.env.WSL_HOST ?? '172.24.64.1'
 
-const adb = (...args) => execFileSync(ADB, ['-s', SERIAL, ...args], { encoding: 'utf8' })
+const adb = (...args) => execFileSync(ADB, [...(SERIAL ? ['-s', SERIAL] : []), ...args], { encoding: 'utf8' })
 
 adb('shell', 'am', 'broadcast', '-a', 'coredevices.coreapp.DEV_CONNECTION', '-n',
   'coredevices.coreapp/coredevices.coreapp.debug.DevConnectionReceiver')

@@ -5,7 +5,7 @@ set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK=/root/nadir
 mkdir -p "$WORK"
-rm -rf "$WORK/src" "$WORK/resources"
+rm -rf "$WORK/src" "$WORK/resources" "$WORK/build"  # a stale build misses new message keys
 cp -r "$SRC/src" "$SRC/resources" "$SRC/package.json" "$SRC/wscript" "$WORK/"
 cd "$WORK"
 export PATH="$HOME/.local/bin:$PATH"
