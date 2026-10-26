@@ -17,9 +17,11 @@
 #define DEFAULT_LON 151.2093
 #define TLE_MAX_AGE_DAYS 14.0
 #define REQUEST_EVERY_MINUTES 30
-#define ROLL_HOURS 8
+#define ROLL_HOURS 4
 #define ROLL_FORWARD_MS 900
+#define ROLL_HOLD_MS 500
 #define ROLL_BACK_MS 350
+#define ROLL_TOTAL_MS (ROLL_FORWARD_MS + ROLL_HOLD_MS + ROLL_BACK_MS)
 #define PANEL_X 14
 #define PANEL_Y 17
 #define PANEL_RADIUS 14
@@ -147,8 +149,8 @@ static void fill_tab(GContext *ctx, GPoint centre, double outer_a, double outer_
 
 // ------------------------------------------------------------------- sky
 
-static void update_sky(time_t now) {
-  double jd = astro_jd(now);
+static void update_sky(time_t when) {
+  double jd = astro_jd(when);
   double lon[BODY_COUNT];
   astro_ecliptic_lon(jd, lon);
   double lst = astro_lst_deg(jd, s_settings.lon);
@@ -164,7 +166,9 @@ static void update_sky(time_t now) {
     s_sky.iss_psi = (az < 180.0 ? -1.0 : 1.0) * (90.0 - el);
     s_sky.iss_visible = true;
   }
+}
 
+static void update_clock(time_t now) {
   struct tm *local = localtime(&now);
   strftime(s_time_text, sizeof(s_time_text), clock_is_24h_style() ? "%H:%M" : "%I:%M", local);
   static const char *const days[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
@@ -558,8 +562,11 @@ static void canvas_update(Layer *layer, GContext *ctx) {
 
 // ----------------------------------------------------------- phone and tick
 
+// A roll moves the sky only; the clock and date always say now.
 static void refresh(void) {
-  update_sky(time(NULL) + s_offset);
+  time_t now = time(NULL);
+  update_sky(now + s_offset);
+  update_clock(now);
   layer_mark_dirty(s_canvas);
 }
 
@@ -616,17 +623,18 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   if (++s_minutes_since_request >= REQUEST_EVERY_MINUTES) request_refresh();
 }
 
-// A tap or flick of the wrist rolls the whole face ROLL_HOURS ahead, easing in
-// and out, then snaps it back to now faster still.
+// A tap or flick of the wrist rolls the sky ROLL_HOURS ahead, easing in
+// and out, holds there for a moment, then snaps back to now faster still.
 static void roll_update(Animation *animation, const AnimationProgress progress) {
-  double p = (double)progress / ANIMATION_NORMALIZED_MAX;
-  double split = (double)ROLL_FORWARD_MS / (ROLL_FORWARD_MS + ROLL_BACK_MS);
+  double ms = (double)progress / ANIMATION_NORMALIZED_MAX * ROLL_TOTAL_MS;
   double ahead;
-  if (p < split) {
-    double t = p / split;
+  if (ms < ROLL_FORWARD_MS) {
+    double t = ms / ROLL_FORWARD_MS;
     ahead = t * t * (3.0 - 2.0 * t);
+  } else if (ms < ROLL_FORWARD_MS + ROLL_HOLD_MS) {
+    ahead = 1.0;
   } else {
-    double t = 1.0 - (p - split) / (1.0 - split);
+    double t = 1.0 - (ms - ROLL_FORWARD_MS - ROLL_HOLD_MS) / ROLL_BACK_MS;
     ahead = t * t;
   }
   s_offset = (time_t)(ahead * ROLL_HOURS * 3600);
@@ -646,7 +654,7 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
   s_roll = animation_create();
   if (!s_roll) return;
   animation_set_implementation(s_roll, &s_roll_impl);
-  animation_set_duration(s_roll, ROLL_FORWARD_MS + ROLL_BACK_MS);
+  animation_set_duration(s_roll, ROLL_TOTAL_MS);
   animation_set_curve(s_roll, AnimationCurveLinear);
   animation_schedule(s_roll);
 }
@@ -696,7 +704,7 @@ static void init(void) {
   BatteryChargeState battery = battery_state_service_peek();
   s_battery = battery.charge_percent;
   s_charging = battery.is_charging;
-  update_sky(time(NULL));
+  refresh();
 
   battery_state_service_subscribe(battery_handler);
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
