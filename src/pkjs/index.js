@@ -1,12 +1,18 @@
-// Phone side of the Nadir watchface: finds where you are, fetches the ISS's
-// orbital elements and the current weather, and hands them to the watch.
+// Phone side of the Nadir watchface: finds where you are, fetches the orbital
+// elements of the ISS, Tiangong and Hubble and the current weather, and hands
+// them to the watch.
 // The watch does all the sky maths itself, so it keeps working offline.
 
 // The settings page; Clay sends its choices to the watch when it is saved.
 var Clay = require('pebble-clay');
 var clay = new Clay(require('./config.json'));
 
-var TLE_URL ='https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=tle';
+// Each satellite's NORAD catalogue number and the message key its elements go in.
+var SATELLITES = [
+  { catnr: 25544, key: 'TLE_LINES' },
+  { catnr: 48274, key: 'TLE_CSS' },
+  { catnr: 20580, key: 'TLE_HST' }
+];
 var TLE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 function fetchText(url, done) {
@@ -37,14 +43,14 @@ function locate(done) {
   );
 }
 
-function fetchTle(done) {
-  var fetchedAt = Number(localStorage.getItem('tle_fetched_at') || 0);
-  var cached = localStorage.getItem('tle_lines');
+function fetchTle(catnr, done) {
+  var fetchedAt = Number(localStorage.getItem('tle_fetched_at_' + catnr) || 0);
+  var cached = localStorage.getItem('tle_lines_' + catnr);
   if (cached && Date.now() - fetchedAt < TLE_MAX_AGE_MS) {
     done(cached);
     return;
   }
-  fetchText(TLE_URL, function (text) {
+  fetchText('https://celestrak.org/NORAD/elements/gp.php?CATNR=' + catnr + '&FORMAT=tle', function (text) {
     if (text) {
       var lines = text
         .split(/\r?\n/)
@@ -59,11 +65,24 @@ function fetchTle(done) {
         lines[first] && lines[first + 1] && lines[first].charAt(0) === '1' && lines[first + 1].charAt(0) === '2';
       if (valid) {
         cached = lines[first] + '\n' + lines[first + 1];
-        localStorage.setItem('tle_lines', cached);
-        localStorage.setItem('tle_fetched_at', String(Date.now()));
+        localStorage.setItem('tle_lines_' + catnr, cached);
+        localStorage.setItem('tle_fetched_at_' + catnr, String(Date.now()));
       }
     }
     done(cached || null);
+  });
+}
+
+// Fetches each satellite's elements in turn, adding them to the message.
+function fetchTles(message, done, index) {
+  index = index || 0;
+  if (index >= SATELLITES.length) {
+    done();
+    return;
+  }
+  fetchTle(SATELLITES[index].catnr, function (tle) {
+    if (tle) message[SATELLITES[index].key] = tle;
+    fetchTles(message, done, index + 1);
   });
 }
 
@@ -95,8 +114,7 @@ function refresh() {
       message.LAT = Math.round(lat * 10000);
       message.LON = Math.round(lon * 10000);
     }
-    fetchTle(function (tle) {
-      if (tle) message.TLE_LINES = tle;
+    fetchTles(message, function () {
       var finish = function () {
         refreshing = false;
         if (Object.keys(message).length === 0) return;

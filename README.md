@@ -1,7 +1,7 @@
 # Nadir: a Pebble Time 2 watchface for the sky
 
-Shows where the Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn and the ISS
-are, alongside the usual time, date, battery and weather. Target: Pebble Time
+Shows where the Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn and the space
+stations are, alongside the usual time, date, battery and weather. Target: Pebble Time
 2 (`emery`, 200x228).
 
 ## How to read it
@@ -20,21 +20,33 @@ are, alongside the usual time, date, battery and weather. Target: Pebble Time
   battery, weather, heart rate, steps today or nothing.
 - **Tap the screen or flick your wrist** and the sky rolls a few hours
   ahead, pauses, then snaps back to now; the clock keeps the real time.
+- **Satellites** (the ISS in cyan, Tiangong in blue, Hubble in grey) are not
+  on the ecliptic, so they are placed by elevation instead: straight up is
+  the top of the ring, the horizon is the middle of either side, and each
+  goes to the left or right of the ring by whether it is in the east or west
+  of your sky. A tab appears once the phone has sent that satellite's orbital
+  elements. While one is above the horizon it moves every 3 seconds instead
+  of once a minute.
+- Tabs that would land on top of each other are nudged apart (at least 13
+  degrees), so a conjunction reads as two bodies side by side rather than one.
 
 ## Settings
 
 The gear beside Nadir in the phone app opens its settings page
 (`src/pkjs/config.json`, built with pebble-clay): what each readout shows,
-Celsius or Fahrenheit, whether a tap rolls the sky, and by how many hours.
-The watch keeps the choices, so they survive a restart. The touch sensor and
-health tracking are only switched on when a setting needs them.
-- **The ISS** is not on the ecliptic, so it is placed by elevation instead:
-  straight up is the top of the ring, the horizon is the middle of either
-  side, and it goes to the left or right of the ring by whether it is in the
-  east or west of your sky. Its cyan tab only appears once the phone has sent
-  orbital elements.
-- Tabs that would land on top of each other are nudged apart (at least 13
-  degrees), so a conjunction reads as two bodies side by side rather than one.
+Celsius or Fahrenheit, which satellites are shown (the ISS by default;
+Tiangong and Hubble are off), whether a tap rolls the sky, and by how many
+hours. The watch keeps the choices, so they survive a restart. The touch
+sensor and health tracking are only switched on when a setting needs them.
+
+## Power
+
+Measured on the watch: the sky maths takes 4 to 8 ms a minute and a redraw
+about 40 ms, so drawing costs well under 0.1 % of the time. Star and tick
+positions are worked out once per sky update, not per redraw, and a pass
+update moves only the satellites. The larger drains are the sensors the
+settings switch on (touch for the roll, heart rate) and the phone's refresh
+every 30 minutes.
 
 ## Where the numbers come from
 
@@ -45,11 +57,11 @@ watch cannot know:
 | Data | Source | Refreshed |
 |---|---|---|
 | Location | phone geolocation, falls back to Sydney | every 30 min |
-| ISS orbital elements (TLE) | CelesTrak, NORAD 25544 | cached 6 h on the phone; the watch ignores them after 14 days |
+| Satellite orbital elements (TLE) | CelesTrak: ISS 25544, Tiangong 48274, Hubble 20580 | cached 6 h on the phone; the watch ignores them after 14 days |
 | Weather | Open-Meteo, no key | every 30 min |
 
 Planets use JPL's "Approximate Positions of the Planets" (Table 1), the Moon a
-short Meeus series, and the ISS a Kepler orbit with the J2 drift of its node
+short Meeus series, and the satellites a Kepler orbit with the J2 drift of its node
 and perigee. Checked against `astronomy-engine` and `satellite.js` (SGP4):
 Sun, planets and ascendant within 0.1 degree, Moon 0.03, ISS elevation and
 azimuth within 0.4 degree.

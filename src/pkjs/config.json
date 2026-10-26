@@ -57,6 +57,37 @@
     "items": [
       {
         "type": "heading",
+        "defaultValue": "Satellites"
+      },
+      {
+        "type": "text",
+        "defaultValue": "Placed on the ring by how high they are. While one is above the horizon it moves every few seconds."
+      },
+      {
+        "type": "toggle",
+        "messageKey": "SAT_ISS",
+        "label": "International Space Station",
+        "defaultValue": true
+      },
+      {
+        "type": "toggle",
+        "messageKey": "SAT_CSS",
+        "label": "Tiangong (Chinese space station)",
+        "defaultValue": false
+      },
+      {
+        "type": "toggle",
+        "messageKey": "SAT_HST",
+        "label": "Hubble (only seen from within about 30 degrees of the equator)",
+        "defaultValue": false
+      }
+    ]
+  },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
         "defaultValue": "Sky roll"
       },
       {

@@ -1,4 +1,4 @@
-// Nadir: a watchface that shows where the Sun, Moon, planets and the ISS are.
+// Nadir: a watchface that shows where the Sun, Moon, planets and space stations are.
 //
 // The outer ring is the ecliptic bent into a loop. It is turned so the point
 // of the ecliptic that is rising sits at the middle of the left edge and the
@@ -6,8 +6,9 @@
 // screen is the part of the ecliptic above your horizon, the lower half the
 // part below it, and the zenith is at the top. East is left, west is right.
 // The inner band carries the zodiac constellations on the same mapping, so
-// everything turns together over the day. The ISS is not on the ecliptic, so
-// it is placed by its elevation and by which side of the sky it is on.
+// everything turns together over the day. Satellites (the ISS, Tiangong and
+// Hubble) are not on the ecliptic, so they are placed by their elevation and by
+// which side of the sky they are on.
 #include <pebble.h>
 
 #include "astro.h"
@@ -17,6 +18,7 @@
 #define DEFAULT_LON 151.2093
 #define TLE_MAX_AGE_DAYS 14.0
 #define REQUEST_EVERY_MINUTES 30
+#define PASS_UPDATE_MS 3000
 #define DEFAULT_ROLL_HOURS 4
 #define ROLL_FORWARD_MS 900
 #define ROLL_HOLD_MS 500
@@ -53,7 +55,20 @@ enum {
   PERSIST_TEMP,
   PERSIST_WCODE,
   PERSIST_PREFS,
+  PERSIST_TLE_CSS,
+  PERSIST_TLE_HST,
 };
+
+// Satellites, each placed like the ISS. PERSIST_TLE holds the ISS's elements.
+enum {
+  SAT_ISS,
+  SAT_CSS,
+  SAT_HST,
+  SAT_COUNT,
+};
+
+// Tabs on the ring: the bodies first, then the satellites.
+#define TAB_IDS (BODY_COUNT + SAT_COUNT)
 
 // What each readout slot shows; the numbers are the settings page's values.
 enum {
@@ -72,13 +87,14 @@ typedef struct {
   bool fahrenheit;
   bool roll;
   uint8_t roll_hours;
+  bool sat[SAT_COUNT];  // added after the first release: older saves stop short of it
 } Prefs;
 
 typedef struct {
   double lat;
   double lon;
-  bool has_tle;
-  AstroTle tle;
+  bool has_tle[SAT_COUNT];
+  AstroTle tle[SAT_COUNT];
   int32_t temp;
   int32_t weather_code;
 } Settings;
@@ -88,8 +104,9 @@ typedef struct {
   double precession_deg;
   double psi[BODY_COUNT];
   double moon_elongation_deg;
-  bool iss_visible;
-  double iss_psi;
+  bool sat_known[SAT_COUNT];
+  bool sat_up[SAT_COUNT];
+  double sat_psi[SAT_COUNT];
 } Sky;
 
 static Window *s_window;
@@ -97,7 +114,7 @@ static Layer *s_canvas;
 static Settings s_settings = {.lat = DEFAULT_LAT, .lon = DEFAULT_LON, .temp = NO_TEMP};
 static Sky s_sky;
 static Prefs s_prefs = {.readout = {READOUT_BATTERY, READOUT_WEATHER}, .roll = true,
-                        .roll_hours = DEFAULT_ROLL_HOURS};
+                        .roll_hours = DEFAULT_ROLL_HOURS, .sat = {true, false, false}};
 static int s_heart_bpm;  // 0 while unknown
 static int s_steps = -1;  // -1 while unknown
 static GFont s_font_time;
@@ -111,6 +128,10 @@ static bool s_charging;
 static int s_minutes_since_request;
 static time_t s_offset;  // how far ahead of now the face is drawn, during a roll
 static Animation *s_roll;
+static AppTimer *s_pass_timer;
+static GPoint s_stars[SKY_VERTEX_COUNT];  // where each star is drawn, worked out once per sky update
+static bool s_stars_stale = true;
+static bool s_ticks_stale = true;  // the same for the zodiac ticks
 
 // ---------------------------------------------------------------- geometry
 
@@ -178,6 +199,20 @@ static void fill_tab(GContext *ctx, GPoint centre, double outer_a, double outer_
 
 // ------------------------------------------------------------------- sky
 
+static void update_sats(time_t when) {
+  double jd = astro_jd(when);
+  for (int sat = 0; sat < SAT_COUNT; sat++) {
+    s_sky.sat_known[sat] = s_prefs.sat[sat] && s_settings.has_tle[sat] &&
+                           astro_abs(jd - s_settings.tle[sat].epoch_jd) < TLE_MAX_AGE_DAYS;
+    s_sky.sat_up[sat] = false;
+    if (!s_sky.sat_known[sat]) continue;
+    double el, az;
+    astro_sat_altaz(&s_settings.tle[sat], jd, s_settings.lat, s_settings.lon, &el, &az);
+    s_sky.sat_psi[sat] = (az < 180.0 ? -1.0 : 1.0) * (90.0 - el);
+    s_sky.sat_up[sat] = el > 0.0;
+  }
+}
+
 static void update_sky(time_t when) {
   double jd = astro_jd(when);
   double lon[BODY_COUNT];
@@ -187,14 +222,8 @@ static void update_sky(time_t when) {
   s_sky.precession_deg = astro_precession_deg(jd);
   for (int i = 0; i < BODY_COUNT; i++) s_sky.psi[i] = s_sky.asc_deg - lon[i] - 90.0;
   s_sky.moon_elongation_deg = wrap_deg(lon[BODY_MOON] - lon[BODY_SUN]);
-
-  s_sky.iss_visible = false;
-  if (s_settings.has_tle && astro_abs(jd - s_settings.tle.epoch_jd) < TLE_MAX_AGE_DAYS) {
-    double el, az;
-    astro_sat_altaz(&s_settings.tle, jd, s_settings.lat, s_settings.lon, &el, &az);
-    s_sky.iss_psi = (az < 180.0 ? -1.0 : 1.0) * (90.0 - el);
-    s_sky.iss_visible = true;
-  }
+  s_stars_stale = s_ticks_stale = true;
+  update_sats(when);
 }
 
 static void update_clock(time_t now) {
@@ -227,7 +256,7 @@ static GColor body_color(int body) {
 // Keeps neighbouring tabs from hiding each other; they are nudged apart
 // rather than overlapped, so a conjunction reads as two bodies side by side.
 static void spread_tabs(double *psi, int count) {
-  int order[BODY_COUNT + 1];
+  int order[TAB_IDS];
   for (int i = 0; i < count; i++) {
     psi[i] = wrap_deg(psi[i]);
     order[i] = i;
@@ -285,13 +314,28 @@ static void draw_moon_glyph(GContext *ctx, GPoint c, GColor ink) {
   graphics_draw_circle(ctx, c, radius);
 }
 
-static void draw_iss_glyph(GContext *ctx, GPoint c, GColor ink) {
+// The ISS as its truss and four wings, Tiangong as its T of modules, Hubble
+// as its tube between two panels.
+static void draw_sat_glyph(GContext *ctx, GPoint c, int sat, GColor ink) {
   graphics_context_set_fill_color(ctx, ink);
-  graphics_fill_rect(ctx, GRect(c.x - 1, c.y - 4, 3, 9), 0, GCornerNone);
-  graphics_fill_rect(ctx, GRect(c.x - 7, c.y - 3, 5, 3), 0, GCornerNone);
-  graphics_fill_rect(ctx, GRect(c.x + 3, c.y - 3, 5, 3), 0, GCornerNone);
-  graphics_fill_rect(ctx, GRect(c.x - 7, c.y + 1, 5, 3), 0, GCornerNone);
-  graphics_fill_rect(ctx, GRect(c.x + 3, c.y + 1, 5, 3), 0, GCornerNone);
+  switch (sat) {
+    case SAT_ISS:
+      graphics_fill_rect(ctx, GRect(c.x - 1, c.y - 4, 3, 9), 0, GCornerNone);
+      graphics_fill_rect(ctx, GRect(c.x - 7, c.y - 3, 5, 3), 0, GCornerNone);
+      graphics_fill_rect(ctx, GRect(c.x + 3, c.y - 3, 5, 3), 0, GCornerNone);
+      graphics_fill_rect(ctx, GRect(c.x - 7, c.y + 1, 5, 3), 0, GCornerNone);
+      graphics_fill_rect(ctx, GRect(c.x + 3, c.y + 1, 5, 3), 0, GCornerNone);
+      break;
+    case SAT_CSS:
+      graphics_fill_rect(ctx, GRect(c.x - 6, c.y - 4, 13, 3), 0, GCornerNone);
+      graphics_fill_rect(ctx, GRect(c.x - 1, c.y - 1, 3, 7), 0, GCornerNone);
+      break;
+    default:
+      graphics_fill_rect(ctx, GRect(c.x - 2, c.y - 5, 5, 11), 1, GCornersAll);
+      graphics_fill_rect(ctx, GRect(c.x - 8, c.y - 2, 4, 5), 0, GCornerNone);
+      graphics_fill_rect(ctx, GRect(c.x + 5, c.y - 2, 4, 5), 0, GCornerNone);
+      break;
+  }
 }
 
 static void draw_glyph(GContext *ctx, GPoint c, int body, GColor ink) {
@@ -311,20 +355,29 @@ static void draw_glyph(GContext *ctx, GPoint c, int body, GColor ink) {
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
 }
 
-// Where each tab sits after nudging; the ISS, when known, is the last entry.
-static int tab_positions(double *psi) {
-  for (int i = 0; i < BODY_COUNT; i++) psi[i] = s_sky.psi[i];
-  int count = BODY_COUNT;
-  if (s_sky.iss_visible) psi[count++] = s_sky.iss_psi;
-  spread_tabs(psi, count);
-  return count;
+// A tab's true place, its colour, and whether its body is down.
+static double tab_psi(int id) { return id < BODY_COUNT ? s_sky.psi[id] : s_sky.sat_psi[id - BODY_COUNT]; }
+
+static GColor tab_color(int id) {
+  static const uint8_t sat_colours[SAT_COUNT] = {GColorCyanARGB8, GColorPictonBlueARGB8,
+                                                 GColorLightGrayARGB8};
+  return id < BODY_COUNT ? body_color(id) : (GColor){.argb = sat_colours[id - BODY_COUNT]};
 }
 
-// Tab i of tab_positions(): its colour, and whether its body is down.
-static GColor tab_color(int i) { return i < BODY_COUNT ? body_color(i) : GColorCyan; }
+static bool tab_below(int id) { return below_horizon(tab_psi(id)); }
 
-static bool tab_below(int i) {
-  return below_horizon(i < BODY_COUNT ? s_sky.psi[i] : s_sky.iss_psi);
+// Which tabs are on the ring, and where each sits after nudging, by tab id.
+static void tab_positions(double psi[TAB_IDS], bool shown[TAB_IDS]) {
+  double packed[TAB_IDS];
+  int ids[TAB_IDS], count = 0;
+  for (int id = 0; id < TAB_IDS; id++) {
+    shown[id] = id < BODY_COUNT || s_sky.sat_known[id - BODY_COUNT];
+    if (!shown[id]) continue;
+    packed[count] = tab_psi(id);
+    ids[count++] = id;
+  }
+  spread_tabs(packed, count);
+  for (int i = 0; i < count; i++) psi[ids[i]] = packed[i];
 }
 
 // A body below the horizon keeps only the two sides of its tab, so the solid
@@ -340,17 +393,19 @@ static void outline_tab(GContext *ctx, GPoint centre, double hw, double hh, doub
 
 static void draw_ring(GContext *ctx, GPoint centre, double hw, double hh) {
   double ia = hw - PANEL_X - 6, ib = hh - PANEL_Y - 6;
-  double psi[BODY_COUNT + 1];
-  int count = tab_positions(psi);
+  double psi[TAB_IDS];
+  bool shown[TAB_IDS];
+  tab_positions(psi, shown);
 
   // Outlines under the solid tabs; then slower bodies first, so the Sun and
-  // Moon are never the ones covered. The ISS, last, goes on top.
-  static const int order[] = {BODY_SATURN, BODY_JUPITER, BODY_MARS, BODY_VENUS,
-                              BODY_MERCURY, BODY_MOON, BODY_SUN, BODY_COUNT};
+  // Moon are never the ones covered. The satellites, last, go on top.
+  static const int order[] = {BODY_SATURN, BODY_JUPITER, BODY_MARS, BODY_VENUS, BODY_MERCURY,
+                              BODY_MOON, BODY_SUN, BODY_COUNT + SAT_HST, BODY_COUNT + SAT_CSS,
+                              BODY_COUNT + SAT_ISS};
   for (int pass = 0; pass < 2; pass++) {
     for (unsigned i = 0; i < sizeof(order) / sizeof(order[0]); i++) {
       int tab = order[i];
-      if (tab >= count || tab_below(tab) != (pass == 0)) continue;
+      if (!shown[tab] || tab_below(tab) != (pass == 0)) continue;
       if (pass == 0) {
         graphics_context_set_stroke_color(ctx, tab_color(tab));
         outline_tab(ctx, centre, hw, hh, ia, ib, psi[tab]);
@@ -366,13 +421,15 @@ static void draw_ring(GContext *ctx, GPoint centre, double hw, double hh) {
 // Black on a solid tab, the body's colour on an outlined one.
 static void draw_ring_glyphs(GContext *ctx, GPoint centre, double hw, double hh) {
   double ma = hw - PANEL_X / 2.0, mb = hh - PANEL_Y / 2.0;
-  double psi[BODY_COUNT + 1];
-  int count = tab_positions(psi);
-  for (int tab = 0; tab < count; tab++) {
+  double psi[TAB_IDS];
+  bool shown[TAB_IDS];
+  tab_positions(psi, shown);
+  for (int tab = 0; tab < TAB_IDS; tab++) {
+    if (!shown[tab]) continue;
     GPoint c = ring_point(centre, ma, mb, psi[tab]);
     GColor ink = tab_below(tab) ? tab_color(tab) : GColorBlack;
     if (tab < BODY_COUNT) draw_glyph(ctx, c, tab, ink);
-    else draw_iss_glyph(ctx, c, ink);
+    else draw_sat_glyph(ctx, c, tab - BODY_COUNT, ink);
   }
 }
 
@@ -420,31 +477,37 @@ static GPoint star_point(GPoint centre, double hw, double hh, const SkyVertex *v
 }
 
 static void draw_constellations(GContext *ctx, GPoint centre, double hw, double hh) {
+  if (s_stars_stale) {
+    for (int i = 0; i < SKY_VERTEX_COUNT; i++) s_stars[i] = star_point(centre, hw, hh, &SKY_VERTICES[i]);
+    s_stars_stale = false;
+  }
   graphics_context_set_stroke_color(ctx, GColorDarkGray);
   graphics_context_set_stroke_width(ctx, 1);
   for (int i = 0; i < SKY_SEGMENT_COUNT; i++) {
-    GPoint p = star_point(centre, hw, hh, &SKY_VERTICES[SKY_SEGMENTS[i].from]);
-    GPoint q = star_point(centre, hw, hh, &SKY_VERTICES[SKY_SEGMENTS[i].to]);
-    graphics_draw_line(ctx, p, q);
+    graphics_draw_line(ctx, s_stars[SKY_SEGMENTS[i].from], s_stars[SKY_SEGMENTS[i].to]);
   }
   graphics_context_set_fill_color(ctx, GColorLightGray);
   for (int i = 0; i < SKY_VERTEX_COUNT; i++) {
-    GPoint p = star_point(centre, hw, hh, &SKY_VERTICES[i]);
-    graphics_fill_rect(ctx, GRect(p.x - 1, p.y - 1, 2, 2), 0, GCornerNone);
+    graphics_fill_rect(ctx, GRect(s_stars[i].x - 1, s_stars[i].y - 1, 2, 2), 0, GCornerNone);
   }
 }
 
 // A tick every 30 degrees of longitude, where one sign of the zodiac hands
 // over to the next.
 static void draw_zodiac_ticks(GContext *ctx, GPoint centre, double hw, double hh) {
-  double a = hw - PANEL_X - BAND_INSET, b = hh - PANEL_Y - BAND_INSET;
+  static GPoint ends[12][2];
+  if (s_ticks_stale) {
+    double a = hw - PANEL_X - BAND_INSET, b = hh - PANEL_Y - BAND_INSET;
+    for (int sign = 0; sign < 12; sign++) {
+      double psi = s_sky.asc_deg - sign * 30.0 - 90.0;
+      ends[sign][0] = band_point(centre, a, b, BAND_RADIUS, psi, TICK_FROM);
+      ends[sign][1] = band_point(centre, a, b, BAND_RADIUS, psi, TICK_TO);
+    }
+    s_ticks_stale = false;
+  }
   graphics_context_set_stroke_color(ctx, GColorWhite);
   graphics_context_set_stroke_width(ctx, 2);
-  for (int sign = 0; sign < 12; sign++) {
-    double psi = s_sky.asc_deg - sign * 30.0 - 90.0;
-    graphics_draw_line(ctx, band_point(centre, a, b, BAND_RADIUS, psi, TICK_FROM),
-                       band_point(centre, a, b, BAND_RADIUS, psi, TICK_TO));
-  }
+  for (int sign = 0; sign < 12; sign++) graphics_draw_line(ctx, ends[sign][0], ends[sign][1]);
 }
 
 // ---------------------------------------------------------------- widgets
@@ -670,12 +733,32 @@ static void canvas_update(Layer *layer, GContext *ctx) {
 
 // ----------------------------------------------------------- phone and tick
 
+static void schedule_pass_update(void);
+
 // A roll moves the sky only; the clock and date always say now.
 static void refresh(void) {
   time_t now = time(NULL);
   update_sky(now + s_offset);
   update_clock(now);
   layer_mark_dirty(s_canvas);
+  schedule_pass_update();
+}
+
+static void pass_update(void *context) {
+  s_pass_timer = NULL;
+  if (s_offset == 0) {
+    update_sats(time(NULL));
+    layer_mark_dirty(s_canvas);
+  }
+  schedule_pass_update();
+}
+
+// A satellite crosses the sky in a few minutes, so while one is up it is
+// moved every PASS_UPDATE_MS rather than once a minute.
+static void schedule_pass_update(void) {
+  bool any_up = false;
+  for (int sat = 0; sat < SAT_COUNT; sat++) any_up = any_up || s_sky.sat_up[sat];
+  if (any_up && !s_pass_timer) s_pass_timer = app_timer_register(PASS_UPDATE_MS, pass_update, NULL);
 }
 
 static void request_refresh(void) {
@@ -686,7 +769,9 @@ static void request_refresh(void) {
   s_minutes_since_request = 0;
 }
 
-static void load_tle(const char *both_lines) {
+static const uint32_t s_tle_persist[SAT_COUNT] = {PERSIST_TLE, PERSIST_TLE_CSS, PERSIST_TLE_HST};
+
+static void load_tle(int sat, const char *both_lines) {
   const char *newline = strchr(both_lines, '\n');
   if (!newline) return;
   char first[80];
@@ -696,8 +781,8 @@ static void load_tle(const char *both_lines) {
   first[len] = '\0';
   AstroTle parsed;
   if (astro_tle_parse(first, newline + 1, &parsed)) {
-    s_settings.tle = parsed;
-    s_settings.has_tle = true;
+    s_settings.tle[sat] = parsed;
+    s_settings.has_tle[sat] = true;
   }
 }
 
@@ -731,6 +816,11 @@ static bool read_prefs(DictionaryIterator *iter) {
   if (unit) { s_prefs.fahrenheit = tuple_int(unit) == 1; changed = true; }
   Tuple *roll = dict_find(iter, MESSAGE_KEY_ROLL_ON);
   if (roll) { s_prefs.roll = tuple_int(roll) != 0; changed = true; }
+  const uint32_t sat_keys[SAT_COUNT] = {MESSAGE_KEY_SAT_ISS, MESSAGE_KEY_SAT_CSS, MESSAGE_KEY_SAT_HST};
+  for (int sat = 0; sat < SAT_COUNT; sat++) {
+    Tuple *shown = dict_find(iter, sat_keys[sat]);
+    if (shown) { s_prefs.sat[sat] = tuple_int(shown) != 0; changed = true; }
+  }
   Tuple *hours = dict_find(iter, MESSAGE_KEY_ROLL_HOURS);
   if (hours && tuple_int(hours) >= 1 && tuple_int(hours) <= 24) {
     s_prefs.roll_hours = (uint8_t)tuple_int(hours);
@@ -750,10 +840,12 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
     persist_write_int(PERSIST_LAT, lat->value->int32);
     persist_write_int(PERSIST_LON, lon->value->int32);
   }
-  Tuple *tle = dict_find(iter, MESSAGE_KEY_TLE_LINES);
-  if (tle) {
-    load_tle(tle->value->cstring);
-    persist_write_string(PERSIST_TLE, tle->value->cstring);
+  const uint32_t tle_keys[SAT_COUNT] = {MESSAGE_KEY_TLE_LINES, MESSAGE_KEY_TLE_CSS, MESSAGE_KEY_TLE_HST};
+  for (int sat = 0; sat < SAT_COUNT; sat++) {
+    Tuple *tle = dict_find(iter, tle_keys[sat]);
+    if (!tle) continue;
+    load_tle(sat, tle->value->cstring);
+    persist_write_string(s_tle_persist[sat], tle->value->cstring);
   }
   Tuple *temp = dict_find(iter, MESSAGE_KEY_TEMP);
   Tuple *code = dict_find(iter, MESSAGE_KEY_WCODE);
@@ -899,17 +991,20 @@ static void load_settings(void) {
     s_settings.lat = persist_read_int(PERSIST_LAT) / 10000.0;
     s_settings.lon = persist_read_int(PERSIST_LON) / 10000.0;
   }
-  if (persist_exists(PERSIST_TLE)) {
+  for (int sat = 0; sat < SAT_COUNT; sat++) {
     char buffer[160];
-    if (persist_read_string(PERSIST_TLE, buffer, sizeof(buffer)) > 0) load_tle(buffer);
+    if (persist_exists(s_tle_persist[sat]) &&
+        persist_read_string(s_tle_persist[sat], buffer, sizeof(buffer)) > 0) {
+      load_tle(sat, buffer);
+    }
   }
   if (persist_exists(PERSIST_TEMP) && persist_exists(PERSIST_WCODE)) {
     s_settings.temp = persist_read_int(PERSIST_TEMP);
     s_settings.weather_code = persist_read_int(PERSIST_WCODE);
   }
-  if (persist_get_size(PERSIST_PREFS) == (int)sizeof(s_prefs)) {
-    persist_read_data(PERSIST_PREFS, &s_prefs, sizeof(s_prefs));
-  }
+  // A save from an older version is shorter; the fields it lacks keep their defaults.
+  int saved = persist_get_size(PERSIST_PREFS);
+  if (saved > 0 && saved <= (int)sizeof(s_prefs)) persist_read_data(PERSIST_PREFS, &s_prefs, saved);
 }
 
 static void window_load(Window *window) {
@@ -943,7 +1038,7 @@ static void init(void) {
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
   apply_prefs();
   app_message_register_inbox_received(inbox_received);
-  app_message_open(256, 32);
+  app_message_open(1024, 32);
 }
 
 static void deinit(void) {
