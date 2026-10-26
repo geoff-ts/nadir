@@ -16,8 +16,8 @@ portal puts a listing live straight away; there is no separate review step.
 - [ ] Keep the UUID in `package.json` (`16183a4f-c48d-4702-8a48-1211031a8115`).
       It identifies Nadir in the store; every later release must use the same
       one.
-- [ ] Make the source repository public first, if you want the listing to
-      link to it.
+- [x] Make the source repository public first, if you want the listing to
+      link to it: https://github.com/geoff-ts/nadir
 
 ## What the portal asks for
 
@@ -70,7 +70,7 @@ captures with `pebble screenshot --emulator emery` if the face changes.
 > Weather data by Open-Meteo.com (CC BY 4.0). Satellite orbits from
 > CelesTrak. Fonts: Bruno Ace and Noto Sans Symbols (SIL OFL).
 >
-> Open source: <repository URL>
+> Open source: https://github.com/geoff-ts/nadir
 
 **Release notes for 1.0.0:** First release.
 
