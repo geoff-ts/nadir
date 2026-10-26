@@ -35,6 +35,11 @@ portal puts a listing live straight away; there is no separate review step.
 | Release notes | Required for the first upload; see below |
 | App binary | The `.pbw` |
 
+Where the portal asks for 144 x 168 screenshots, use
+`docs/screenshots/144x168/`: the same captures scaled down to 144 x 164 with
+a 2 px black band top and bottom (the face itself is laid out only for
+200 x 228).
+
 Screenshots in the listing must be plain watch-screen captures. Framed images
 (a screenshot inside a watch drawing) are only for banners. Take fresh
 captures with `pebble screenshot --emulator emery` if the face changes.
