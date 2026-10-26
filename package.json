@@ -33,7 +33,13 @@
           "type": "font",
           "name": "FONT_STARLOOM_27",
           "file": "fonts/Starloom.ttf",
-          "characterRegex": "[A-Z0-9 -]"
+          "characterRegex": "[0-9-]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_STARLOOM_24",
+          "file": "fonts/Starloom.ttf",
+          "characterRegex": "[A-Z0-9 ]"
         },
         {
           "type": "font",

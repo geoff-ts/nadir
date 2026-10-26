@@ -39,7 +39,8 @@
 #define SMALL_CAP_TOP 8  // FONT_STARLOOM_27: from the top of the text box to the top of a capital
 #define SMALL_CAP_H 19
 #define TIME_CAP_TOP 26  // the same for FONT_STARLOOM_88
-#define DATE_CAP_TOP 56
+#define DATE_TEXT_TOP 7  // the same for FONT_STARLOOM_24
+#define DATE_CAP_TOP 58
 #define TIME_DIGIT_TOP 83
 #define TIME_BOLD 1
 #define READOUT_DIGIT_TOP 163
@@ -101,6 +102,7 @@ static int s_heart_bpm;  // 0 while unknown
 static int s_steps = -1;  // -1 while unknown
 static GFont s_font_time;
 static GFont s_font_small;
+static GFont s_font_date;
 static GFont s_font_glyph;
 static char s_time_text[8];
 static char s_date_text[16];
@@ -650,8 +652,8 @@ static void canvas_update(Layer *layer, GContext *ctx) {
   draw_zodiac_ticks(ctx, centre, hw, hh);
 
   graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx, s_date_text, s_font_small,
-                     GRect(0, DATE_CAP_TOP - SMALL_CAP_TOP, bounds.size.w, 40),
+  graphics_draw_text(ctx, s_date_text, s_font_date,
+                     GRect(0, DATE_CAP_TOP - DATE_TEXT_TOP, bounds.size.w, 40),
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
   // Drawn again shifted by up to TIME_BOLD px each way, which thickens every
   // stroke with square corners.
@@ -922,6 +924,7 @@ static void window_unload(Window *window) { layer_destroy(s_canvas); }
 static void init(void) {
   s_font_time = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_STARLOOM_88));
   s_font_small = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_STARLOOM_27));
+  s_font_date = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_STARLOOM_24));
   s_font_glyph = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_NOTO_16));
 
   load_settings();
@@ -952,6 +955,7 @@ static void deinit(void) {
   window_destroy(s_window);
   fonts_unload_custom_font(s_font_time);
   fonts_unload_custom_font(s_font_small);
+  fonts_unload_custom_font(s_font_date);
   fonts_unload_custom_font(s_font_glyph);
 }
 
