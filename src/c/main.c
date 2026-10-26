@@ -27,6 +27,15 @@
 #define BAND_SCALE 1.3
 #define BAND_RADIUS 14
 #define NO_TEMP INT32_MIN
+#define DATE_TOP 44
+#define TIME_TOP 56
+#define READOUT_TOP 160
+#define READOUT_TEXT_DY (-9)
+#define READOUT_ICON_H 22
+#define READOUT_GAP 5
+#define READOUT_SPREAD 40
+#define BATTERY_ICON_W 12
+#define WEATHER_ICON_W 32
 
 enum {
   PERSIST_LAT = 1,
@@ -362,7 +371,9 @@ static void draw_constellations(GContext *ctx, GPoint centre, double hw, double 
 
 // ---------------------------------------------------------------- widgets
 
-static void draw_battery(GContext *ctx, GRect box) {
+static void draw_battery_icon(GContext *ctx, GPoint origin, int unused) {
+  (void)unused;
+  GRect box = GRect(origin.x, origin.y, BATTERY_ICON_W, READOUT_ICON_H);
   GColor colour = s_battery <= 20 ? GColorRed : (s_charging ? GColorYellow : GColorGreen);
   graphics_context_set_stroke_color(ctx, colour);
   graphics_context_set_stroke_width(ctx, 2);
@@ -382,6 +393,7 @@ static void cloud_shape(GContext *ctx, GPoint o, int grow) {
 }
 
 static void draw_weather_icon(GContext *ctx, GPoint o, int code) {
+  o.x -= 2;  // the cloud is drawn from x+3; this keeps its left edge on the icon box
   GColor blue = GColorVividCerulean;
   bool clear = code <= 1;
   if (clear) {
@@ -422,19 +434,35 @@ static void draw_weather_icon(GContext *ctx, GPoint o, int code) {
   }
 }
 
+// An icon and its number, centred together on cx, the icon's middle level
+// with the middle of the digits.
+static void draw_readout(GContext *ctx, int cx, int icon_w, const char *text,
+                         void (*icon)(GContext *, GPoint, int), int icon_arg) {
+  GSize size = graphics_text_layout_get_content_size(text, s_font_small, GRect(0, 0, 120, 60),
+                                                     GTextOverflowModeFill, GTextAlignmentLeft);
+  int left = cx - (icon_w + READOUT_GAP + size.w) / 2;
+  icon(ctx, GPoint(left, READOUT_TOP), icon_arg);
+  graphics_draw_text(ctx, text, s_font_small,
+                     GRect(left + icon_w + READOUT_GAP, READOUT_TOP + READOUT_TEXT_DY, size.w + 4, 60),
+                     GTextOverflowModeFill, GTextAlignmentLeft, NULL);
+}
+
 static void canvas_update(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   double hw = bounds.size.w / 2.0, hh = bounds.size.h / 2.0;
   GPoint centre = GPoint(bounds.size.w / 2, bounds.size.h / 2);
 
-  graphics_context_set_fill_color(ctx, GColorDarkGray);
+  graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
   draw_ring(ctx, centre, hw, hh);
 
+  GRect panel = GRect(PANEL_X, PANEL_Y, bounds.size.w - 2 * PANEL_X, bounds.size.h - 2 * PANEL_Y);
   graphics_context_set_fill_color(ctx, GColorBlack);
-  graphics_fill_rect(ctx, GRect(PANEL_X, PANEL_Y, bounds.size.w - 2 * PANEL_X,
-                                bounds.size.h - 2 * PANEL_Y), PANEL_RADIUS, GCornersAll);
+  graphics_fill_rect(ctx, panel, PANEL_RADIUS, GCornersAll);
+  graphics_context_set_stroke_color(ctx, GColorDarkGray);
+  graphics_context_set_stroke_width(ctx, 1);
+  graphics_draw_round_rect(ctx, panel, PANEL_RADIUS);
 
   draw_ring_glyphs(ctx, centre, hw, hh);
 
@@ -446,22 +474,18 @@ static void canvas_update(Layer *layer, GContext *ctx) {
   draw_constellations(ctx, centre, hw, hh);
 
   graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx, s_date_text, s_font_date, GRect(PANEL_X, 54, bounds.size.w - 2 * PANEL_X, 40),
+  graphics_draw_text(ctx, s_date_text, s_font_date, GRect(PANEL_X, DATE_TOP, panel.size.w, 40),
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
-  graphics_draw_text(ctx, s_time_text, s_font_time, GRect(PANEL_X, 64, bounds.size.w - 2 * PANEL_X, 100),
+  graphics_draw_text(ctx, s_time_text, s_font_time, GRect(PANEL_X - 4, TIME_TOP, panel.size.w + 8, 110),
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
 
-  char text[8];
-  draw_battery(ctx, GRect(44, 158, 12, 24));
-  snprintf(text, sizeof(text), "%d", s_battery);
-  graphics_draw_text(ctx, text, s_font_small, GRect(60, 150, 46, 40), GTextOverflowModeFill,
-                     GTextAlignmentLeft, NULL);
-
+  char text[12];
+  snprintf(text, sizeof(text), "%d%%", s_battery);
+  draw_readout(ctx, bounds.size.w / 2 - READOUT_SPREAD, BATTERY_ICON_W, text, draw_battery_icon, 0);
   if (s_settings.temp != NO_TEMP) {
-    draw_weather_icon(ctx, GPoint(112, 146), (int)s_settings.weather_code);
-    snprintf(text, sizeof(text), "%d", (int)s_settings.temp);
-    graphics_draw_text(ctx, text, s_font_small, GRect(105, 158, 50, 40), GTextOverflowModeFill,
-                       GTextAlignmentCenter, NULL);
+    snprintf(text, sizeof(text), "%d\xC2\xB0", (int)s_settings.temp);
+    draw_readout(ctx, bounds.size.w / 2 + READOUT_SPREAD, WEATHER_ICON_W, text, draw_weather_icon,
+                 (int)s_settings.weather_code);
   }
 }
 
@@ -553,9 +577,9 @@ static void window_load(Window *window) {
 static void window_unload(Window *window) { layer_destroy(s_canvas); }
 
 static void init(void) {
-  s_font_time = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_DIGITS_82));
-  s_font_date = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_CHAKRA_24));
-  s_font_small = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_DIGITS_32));
+  s_font_time = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_SAIRA_92));
+  s_font_date = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_SAIRA_30));
+  s_font_small = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_SAIRA_34));
   s_font_glyph = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_NOTO_16));
 
   load_settings();

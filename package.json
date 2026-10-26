@@ -20,20 +20,20 @@
       "media": [
         {
           "type": "font",
-          "name": "FONT_DIGITS_82",
-          "file": "fonts/NadirDigits-Bold.ttf",
+          "name": "FONT_SAIRA_92",
+          "file": "fonts/SairaExtraCondensed-Bold.ttf",
           "characterRegex": "[0-9:]"
         },
         {
           "type": "font",
-          "name": "FONT_DIGITS_32",
-          "file": "fonts/NadirDigits-Bold.ttf",
-          "characterRegex": "[0-9-]"
+          "name": "FONT_SAIRA_34",
+          "file": "fonts/SairaExtraCondensed-Bold.ttf",
+          "characterRegex": "[0-9%\u00B0-]"
         },
         {
           "type": "font",
-          "name": "FONT_CHAKRA_24",
-          "file": "fonts/ChakraPetch-Bold.ttf",
+          "name": "FONT_SAIRA_30",
+          "file": "fonts/SairaExtraCondensed-Bold.ttf",
           "characterRegex": "[a-z0-9 ]"
         },
         {

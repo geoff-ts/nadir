@@ -103,7 +103,7 @@ can reach. Notes on how the pieces fit:
 
 ## Fonts
 
-Chakra Petch (and a squeezed copy of its digits, made by
-`tools/make-digits-font.py`) and Noto Sans Symbols, both SIL OFL 1.1. See
+Saira Extra Condensed Bold (an open stand-in for Agency FB, which cannot be
+bundled) and Noto Sans Symbols, both SIL OFL 1.1. See
 `resources/fonts/LICENSES.md`. The Sun's symbol is drawn in code because Noto
 Sans Symbols has no glyph for it.
