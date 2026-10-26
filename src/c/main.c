@@ -19,13 +19,12 @@
 #define TLE_MAX_AGE_DAYS 14.0
 #define REQUEST_EVERY_MINUTES 30
 #define PASS_UPDATE_MS 3000
+#define PASS_MIN_EL_DEG 10.0
 #define DEFAULT_ROLL_HOURS 4
 #define ROLL_FORWARD_MS 900
 #define ROLL_HOLD_MS 500
 #define ROLL_BACK_MS 20
 #define ROLL_TOTAL_MS (ROLL_FORWARD_MS + ROLL_HOLD_MS + ROLL_BACK_MS)
-#define TOUCH_TAP_MAX_MS 400
-#define TOUCH_TAP_MAX_MOVE 12
 #define PANEL_X 14
 #define PANEL_Y 17
 #define PANEL_RADIUS 14
@@ -105,7 +104,7 @@ typedef struct {
   double psi[BODY_COUNT];
   double moon_elongation_deg;
   bool sat_known[SAT_COUNT];
-  bool sat_up[SAT_COUNT];
+  bool sat_high[SAT_COUNT];  // above PASS_MIN_EL_DEG
   double sat_psi[SAT_COUNT];
 } Sky;
 
@@ -204,12 +203,12 @@ static void update_sats(time_t when) {
   for (int sat = 0; sat < SAT_COUNT; sat++) {
     s_sky.sat_known[sat] = s_prefs.sat[sat] && s_settings.has_tle[sat] &&
                            astro_abs(jd - s_settings.tle[sat].epoch_jd) < TLE_MAX_AGE_DAYS;
-    s_sky.sat_up[sat] = false;
+    s_sky.sat_high[sat] = false;
     if (!s_sky.sat_known[sat]) continue;
     double el, az;
     astro_sat_altaz(&s_settings.tle[sat], jd, s_settings.lat, s_settings.lon, &el, &az);
     s_sky.sat_psi[sat] = (az < 180.0 ? -1.0 : 1.0) * (90.0 - el);
-    s_sky.sat_up[sat] = el > 0.0;
+    s_sky.sat_high[sat] = el > PASS_MIN_EL_DEG;
   }
 }
 
@@ -753,12 +752,12 @@ static void pass_update(void *context) {
   schedule_pass_update();
 }
 
-// A satellite crosses the sky in a few minutes, so while one is up it is
-// moved every PASS_UPDATE_MS rather than once a minute.
+// A satellite crosses the sky in a few minutes, so while one is well up (above
+// PASS_MIN_EL_DEG) it is moved every PASS_UPDATE_MS rather than once a minute.
 static void schedule_pass_update(void) {
-  bool any_up = false;
-  for (int sat = 0; sat < SAT_COUNT; sat++) any_up = any_up || s_sky.sat_up[sat];
-  if (any_up && !s_pass_timer) s_pass_timer = app_timer_register(PASS_UPDATE_MS, pass_update, NULL);
+  bool any_high = false;
+  for (int sat = 0; sat < SAT_COUNT; sat++) any_high = any_high || s_sky.sat_high[sat];
+  if (any_high && !s_pass_timer) s_pass_timer = app_timer_register(PASS_UPDATE_MS, pass_update, NULL);
 }
 
 static void request_refresh(void) {
@@ -905,30 +904,6 @@ static void start_roll(void) {
 
 static void tap_handler(AccelAxisType axis, int32_t direction) { start_roll(); }
 
-static int64_t now_ms(void) {
-  time_t seconds;
-  uint16_t ms;
-  time_ms(&seconds, &ms);
-  return (int64_t)seconds * 1000 + ms;
-}
-
-// A short touch on the screen, not a drag, rolls the sky too.
-static void touch_handler(const TouchEvent *event, void *context) {
-  static int64_t down_ms;
-  static GPoint down_at, last_at;
-  if (event->type == TouchEvent_Touchdown) {
-    down_ms = now_ms();
-    down_at = last_at = GPoint(event->x, event->y);
-  } else if (event->type == TouchEvent_PositionUpdate) {
-    last_at = GPoint(event->x, event->y);
-  } else {
-    int dx = last_at.x - down_at.x, dy = last_at.y - down_at.y;
-    if (now_ms() - down_ms <= TOUCH_TAP_MAX_MS && dx * dx + dy * dy <= TOUCH_TAP_MAX_MOVE * TOUCH_TAP_MAX_MOVE) {
-      start_roll();
-    }
-  }
-}
-
 static bool shows_readout(int kind) {
   for (int slot = 0; slot < READOUT_SLOTS; slot++) {
     if (s_prefs.readout[slot] == kind) return true;
@@ -954,19 +929,15 @@ static void health_handler(HealthEventType event, void *context) {
   }
 }
 
-// Listens only for what the settings use: the touch sensor and health
-// tracking stay off unless something on the face needs them.
+// Listens only for what the settings use: the tap service and health
+// tracking stay off unless something on the face needs them. The touch
+// screen is never used: keeping it powered costs more than the roll is worth.
 static void apply_prefs(void) {
   static bool rolling, health;
   if (s_prefs.roll != rolling) {
     rolling = s_prefs.roll;
-    if (rolling) {
-      accel_tap_service_subscribe(tap_handler);
-      touch_service_subscribe(touch_handler, NULL);
-    } else {
-      touch_service_unsubscribe();
-      accel_tap_service_unsubscribe();
-    }
+    if (rolling) accel_tap_service_subscribe(tap_handler);
+    else accel_tap_service_unsubscribe();
   }
   bool wants_health = shows_readout(READOUT_HEART) || shows_readout(READOUT_STEPS);
   if (wants_health != health) {

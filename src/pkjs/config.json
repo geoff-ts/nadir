@@ -61,7 +61,7 @@
       },
       {
         "type": "text",
-        "defaultValue": "Placed on the ring by how high they are. While one is above the horizon it moves every few seconds."
+        "defaultValue": "Placed on the ring by how high they are. While one is more than 10 degrees up it moves every few seconds."
       },
       {
         "type": "toggle",
@@ -93,7 +93,7 @@
       {
         "type": "toggle",
         "messageKey": "ROLL_ON",
-        "label": "Tap the screen or flick your wrist to roll the sky ahead",
+        "label": "Flick your wrist to roll the sky ahead",
         "defaultValue": true
       },
       {

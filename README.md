@@ -18,15 +18,15 @@ stations are, alongside the usual time, date, battery and weather. Target: Pebbl
   every 30 degrees of longitude, where one sign hands over to the next.
 - **Readouts** under the time: two numbers laid over their icons, each one
   battery, weather, heart rate, steps today or nothing.
-- **Tap the screen or flick your wrist** and the sky rolls a few hours
+- **Flick your wrist** (or tap the watch firmly) and the sky rolls a few hours
   ahead, pauses, then snaps back to now; the clock keeps the real time.
 - **Satellites** (the ISS in cyan, Tiangong in blue, Hubble in grey) are not
   on the ecliptic, so they are placed by elevation instead: straight up is
   the top of the ring, the horizon is the middle of either side, and each
   goes to the left or right of the ring by whether it is in the east or west
   of your sky. A tab appears once the phone has sent that satellite's orbital
-  elements. While one is above the horizon it moves every 3 seconds instead
-  of once a minute.
+  elements. While one is more than 10 degrees up it moves every 3 seconds
+  instead of once a minute.
 - Tabs that would land on top of each other are nudged apart (at least 13
   degrees), so a conjunction reads as two bodies side by side rather than one.
 
@@ -36,8 +36,9 @@ The gear beside Nadir in the phone app opens its settings page
 (`src/pkjs/config.json`, built with pebble-clay): what each readout shows,
 Celsius or Fahrenheit, which satellites are shown (the ISS by default;
 Tiangong and Hubble are off), whether a tap rolls the sky, and by how many
-hours. The watch keeps the choices, so they survive a restart. The touch
-sensor and health tracking are only switched on when a setting needs them.
+hours. The watch keeps the choices, so they survive a restart. The
+accelerometer's tap service and health tracking are only switched on when a
+setting needs them; the touch screen is never used, to save power.
 
 ## Power
 
@@ -45,8 +46,9 @@ Measured on the watch: the sky maths takes 4 to 8 ms a minute and a redraw
 about 40 ms, so drawing costs well under 0.1 % of the time. Star and tick
 positions are worked out once per sky update, not per redraw, and a pass
 update moves only the satellites. The larger drains are the sensors the
-settings switch on (touch for the roll, heart rate) and the phone's refresh
-every 30 minutes.
+settings switch on (heart rate, the tap service for the roll) and the
+phone's refresh every 30 minutes. Satellites update every 3 s only while one
+is more than 10 degrees up.
 
 ## Where the numbers come from
 
