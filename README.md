@@ -38,7 +38,7 @@ runs on the watch, so it keeps working with the phone away.
 - **Readouts** under the time: two numbers laid over their icons, each one of
   battery, weather, heart rate, steps today or nothing.
 - **Flick your wrist** (or tap the watch firmly) and the sky rolls a few hours
-  ahead, pauses, then snaps back to now. The clock keeps the real time.
+  ahead, pauses, then slides back to now. The clock keeps the real time.
 
 ## Settings
 

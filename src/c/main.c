@@ -23,7 +23,7 @@
 #define DEFAULT_ROLL_HOURS 4
 #define ROLL_FORWARD_MS 900
 #define ROLL_HOLD_MS 500
-#define ROLL_BACK_MS 20
+#define ROLL_BACK_MS 200
 #define ROLL_TOTAL_MS (ROLL_FORWARD_MS + ROLL_HOLD_MS + ROLL_BACK_MS)
 #define PANEL_X 14
 #define PANEL_Y 17
@@ -867,7 +867,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 }
 
 // A tap or flick of the wrist rolls the sky s_prefs.roll_hours ahead, easing in
-// and out, holds there for a moment, then snaps straight back to now.
+// and out, holds there for a moment, then slides quickly back to now.
 static void roll_update(Animation *animation, const AnimationProgress progress) {
   double ms = (double)progress / ANIMATION_NORMALIZED_MAX * ROLL_TOTAL_MS;
   double ahead;
