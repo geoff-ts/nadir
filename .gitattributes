@@ -1,0 +1,3 @@
+# Built and run inside WSL, so these must keep Unix line endings.
+*.sh text eol=lf
+wscript text eol=lf
