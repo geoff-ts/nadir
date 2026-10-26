@@ -1,0 +1,48 @@
+{
+  "name": "nadir",
+  "author": "ThinkSwift",
+  "version": "0.1.0",
+  "keywords": ["pebble-app"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "Nadir",
+    "uuid": "16183a4f-c48d-4702-8a48-1211031a8115",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": ["emery"],
+    "watchapp": {
+      "watchface": true
+    },
+    "capabilities": ["location"],
+    "messageKeys": ["REQUEST", "LAT", "LON", "TLE_LINES", "TEMP", "WCODE"],
+    "resources": {
+      "media": [
+        {
+          "type": "font",
+          "name": "FONT_DIGITS_82",
+          "file": "fonts/NadirDigits-Bold.ttf",
+          "characterRegex": "[0-9:]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_DIGITS_32",
+          "file": "fonts/NadirDigits-Bold.ttf",
+          "characterRegex": "[0-9-]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_CHAKRA_24",
+          "file": "fonts/ChakraPetch-Bold.ttf",
+          "characterRegex": "[a-z0-9 ]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_NOTO_16",
+          "file": "fonts/NotoSansSymbols.ttf",
+          "characterRegex": "[\u263D\u263F\u2640\u2642\u2643\u2644]"
+        }
+      ]
+    }
+  }
+}
