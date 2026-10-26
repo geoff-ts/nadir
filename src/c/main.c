@@ -26,16 +26,16 @@
 #define BAND_SPREAD 10
 #define BAND_SCALE 1.3
 #define BAND_RADIUS 14
+#define TICK_FROM 6
+#define TICK_TO 11
 #define NO_TEMP INT32_MIN
-#define DATE_TOP 44
-#define TIME_TOP 56
-#define READOUT_TOP 160
-#define READOUT_TEXT_DY (-9)
-#define READOUT_ICON_H 22
-#define READOUT_GAP 5
-#define READOUT_SPREAD 40
-#define BATTERY_ICON_W 12
-#define WEATHER_ICON_W 32
+#define SMALL_CAP_TOP 9  // FONT_SAIRA_28: from the top of the text box to the top of a capital
+#define SMALL_CAP_H 19
+#define TIME_CAP_TOP 31  // the same for FONT_SAIRA_100
+#define DATE_CAP_TOP 55
+#define TIME_DIGIT_TOP 80
+#define READOUT_DIGIT_TOP 166
+#define READOUT_GAP 16
 
 enum {
   PERSIST_LAT = 1,
@@ -68,7 +68,6 @@ static Layer *s_canvas;
 static Settings s_settings = {.lat = DEFAULT_LAT, .lon = DEFAULT_LON, .temp = NO_TEMP};
 static Sky s_sky;
 static GFont s_font_time;
-static GFont s_font_date;
 static GFont s_font_small;
 static GFont s_font_glyph;
 static char s_time_text[8];
@@ -163,21 +162,22 @@ static void update_sky(time_t now) {
 
   struct tm *local = localtime(&now);
   strftime(s_time_text, sizeof(s_time_text), clock_is_24h_style() ? "%H:%M" : "%I:%M", local);
-  static const char *const days[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
-  int day = local->tm_mday;
-  const char *suffix = "th";
-  if (day % 100 < 11 || day % 100 > 13) {
-    if (day % 10 == 1) suffix = "st";
-    else if (day % 10 == 2) suffix = "nd";
-    else if (day % 10 == 3) suffix = "rd";
-  }
-  snprintf(s_date_text, sizeof(s_date_text), "%s %d%s", days[local->tm_wday], day, suffix);
+  static const char *const days[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+  static const char *const months[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+  snprintf(s_date_text, sizeof(s_date_text), "%s %d %s", days[local->tm_wday], local->tm_mday,
+           months[local->tm_mon]);
+}
+
+static bool below_horizon(double psi) {
+  psi = wrap_deg(psi);
+  return psi > 90.0 && psi < 270.0;
 }
 
 static GColor body_color(int body) {
   switch (body) {
     case BODY_SUN: return GColorChromeYellow;
-    case BODY_MOON: return GColorCeleste;
+    case BODY_MOON: return GColorWhite;
     case BODY_MERCURY: return GColorVividViolet;
     case BODY_VENUS: return GColorFashionMagenta;
     case BODY_MARS: return GColorRed;
@@ -214,18 +214,18 @@ static void spread_tabs(double *psi, int count) {
   }
 }
 
-static void draw_sun_glyph(GContext *ctx, GPoint c) {
-  graphics_context_set_stroke_color(ctx, GColorBlack);
+static void draw_sun_glyph(GContext *ctx, GPoint c, GColor ink) {
+  graphics_context_set_stroke_color(ctx, ink);
   graphics_context_set_stroke_width(ctx, 1);
   graphics_draw_circle(ctx, c, 5);
-  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_context_set_fill_color(ctx, ink);
   graphics_fill_circle(ctx, c, 1);
 }
 
 // The Moon as a small disc, lit as it is tonight. A waxing Moon is lit on its
 // right in the north and on its left in the south, so the lit side flips with
 // the sign of the latitude.
-static void draw_moon_glyph(GContext *ctx, GPoint c) {
+static void draw_moon_glyph(GContext *ctx, GPoint c, GColor ink) {
   const int radius = 7;
   double elongation = s_sky.moon_elongation_deg;
   double terminator = astro_cos(elongation * 0.017453292519943295);
@@ -243,12 +243,12 @@ static void draw_moon_glyph(GContext *ctx, GPoint c) {
     if (from > to) continue;
     graphics_draw_line(ctx, GPoint(c.x + flip * from, c.y + dy), GPoint(c.x + flip * to, c.y + dy));
   }
-  graphics_context_set_stroke_color(ctx, GColorBlack);
+  graphics_context_set_stroke_color(ctx, ink);
   graphics_draw_circle(ctx, c, radius);
 }
 
-static void draw_iss_glyph(GContext *ctx, GPoint c) {
-  graphics_context_set_fill_color(ctx, GColorBlack);
+static void draw_iss_glyph(GContext *ctx, GPoint c, GColor ink) {
+  graphics_context_set_fill_color(ctx, ink);
   graphics_fill_rect(ctx, GRect(c.x - 1, c.y - 4, 3, 9), 0, GCornerNone);
   graphics_fill_rect(ctx, GRect(c.x - 7, c.y - 3, 5, 3), 0, GCornerNone);
   graphics_fill_rect(ctx, GRect(c.x + 3, c.y - 3, 5, 3), 0, GCornerNone);
@@ -256,19 +256,19 @@ static void draw_iss_glyph(GContext *ctx, GPoint c) {
   graphics_fill_rect(ctx, GRect(c.x + 3, c.y + 1, 5, 3), 0, GCornerNone);
 }
 
-static void draw_glyph(GContext *ctx, GPoint c, int body) {
+static void draw_glyph(GContext *ctx, GPoint c, int body, GColor ink) {
   static const char *const glyphs[BODY_COUNT] = {NULL, "\xE2\x98\xBD", "\xE2\x98\xBF",
                                                   "\xE2\x99\x80", "\xE2\x99\x82",
                                                   "\xE2\x99\x83", "\xE2\x99\x84"};
   if (body == BODY_SUN) {
-    draw_sun_glyph(ctx, c);
+    draw_sun_glyph(ctx, c, ink);
     return;
   }
   if (body == BODY_MOON) {
-    draw_moon_glyph(ctx, c);
+    draw_moon_glyph(ctx, c, ink);
     return;
   }
-  graphics_context_set_text_color(ctx, GColorBlack);
+  graphics_context_set_text_color(ctx, ink);
   graphics_draw_text(ctx, glyphs[body], s_font_glyph, GRect(c.x - 12, c.y - 12, 24, 22),
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
 }
@@ -282,33 +282,60 @@ static int tab_positions(double *psi) {
   return count;
 }
 
+// Tab i of tab_positions(): its colour, and whether its body is down.
+static GColor tab_color(int i) { return i < BODY_COUNT ? body_color(i) : GColorCyan; }
+
+static bool tab_below(int i) {
+  return below_horizon(i < BODY_COUNT ? s_sky.psi[i] : s_sky.iss_psi);
+}
+
+// A body below the horizon keeps only the two sides of its tab, so the solid
+// tabs are exactly what is up in the sky now.
+static void outline_tab(GContext *ctx, GPoint centre, double hw, double hh, double ia, double ib,
+                        double psi) {
+  graphics_context_set_stroke_width(ctx, 2);
+  for (int side = -1; side <= 1; side += 2) {
+    double edge = psi + side * TAB_HALF_DEG;
+    graphics_draw_line(ctx, ring_point(centre, hw, hh, edge), ring_point(centre, ia, ib, edge));
+  }
+}
+
 static void draw_ring(GContext *ctx, GPoint centre, double hw, double hh) {
   double ia = hw - PANEL_X - 6, ib = hh - PANEL_Y - 6;
   double psi[BODY_COUNT + 1];
   int count = tab_positions(psi);
 
-  // Slower bodies first, so the Sun and Moon are never the ones covered.
+  // Outlines under the solid tabs; then slower bodies first, so the Sun and
+  // Moon are never the ones covered. The ISS, last, goes on top.
   static const int order[] = {BODY_SATURN, BODY_JUPITER, BODY_MARS, BODY_VENUS,
-                              BODY_MERCURY, BODY_MOON, BODY_SUN};
-  for (unsigned i = 0; i < sizeof(order) / sizeof(order[0]); i++) {
-    graphics_context_set_fill_color(ctx, body_color(order[i]));
-    fill_tab(ctx, centre, hw, hh, ia, ib, psi[order[i]], TAB_HALF_DEG);
-  }
-  if (count > BODY_COUNT) {
-    graphics_context_set_fill_color(ctx, GColorCyan);
-    fill_tab(ctx, centre, hw, hh, ia, ib, psi[BODY_COUNT], TAB_HALF_DEG);
+                              BODY_MERCURY, BODY_MOON, BODY_SUN, BODY_COUNT};
+  for (int pass = 0; pass < 2; pass++) {
+    for (unsigned i = 0; i < sizeof(order) / sizeof(order[0]); i++) {
+      int tab = order[i];
+      if (tab >= count || tab_below(tab) != (pass == 0)) continue;
+      if (pass == 0) {
+        graphics_context_set_stroke_color(ctx, tab_color(tab));
+        outline_tab(ctx, centre, hw, hh, ia, ib, psi[tab]);
+      } else {
+        graphics_context_set_fill_color(ctx, tab_color(tab));
+        fill_tab(ctx, centre, hw, hh, ia, ib, psi[tab], TAB_HALF_DEG);
+      }
+    }
   }
 }
 
 // Drawn after the panel is cut out so the glyphs are never clipped by it.
+// Black on a solid tab, the body's colour on an outlined one.
 static void draw_ring_glyphs(GContext *ctx, GPoint centre, double hw, double hh) {
   double ma = hw - PANEL_X / 2.0, mb = hh - PANEL_Y / 2.0;
   double psi[BODY_COUNT + 1];
   int count = tab_positions(psi);
-  for (int body = 0; body < BODY_COUNT; body++) {
-    draw_glyph(ctx, ring_point(centre, ma, mb, psi[body]), body);
+  for (int tab = 0; tab < count; tab++) {
+    GPoint c = ring_point(centre, ma, mb, psi[tab]);
+    GColor ink = tab_below(tab) ? tab_color(tab) : GColorBlack;
+    if (tab < BODY_COUNT) draw_glyph(ctx, c, tab, ink);
+    else draw_iss_glyph(ctx, c, ink);
   }
-  if (count > BODY_COUNT) draw_iss_glyph(ctx, ring_point(centre, ma, mb, psi[BODY_COUNT]));
 }
 
 // First quarter of a rounded rectangle's outline, walked by arc length from the
@@ -369,37 +396,71 @@ static void draw_constellations(GContext *ctx, GPoint centre, double hw, double 
   }
 }
 
+// A tick every 30 degrees of longitude, where one sign of the zodiac hands
+// over to the next.
+static void draw_zodiac_ticks(GContext *ctx, GPoint centre, double hw, double hh) {
+  double a = hw - PANEL_X - BAND_INSET, b = hh - PANEL_Y - BAND_INSET;
+  graphics_context_set_stroke_color(ctx, GColorWhite);
+  graphics_context_set_stroke_width(ctx, 2);
+  for (int sign = 0; sign < 12; sign++) {
+    double psi = s_sky.asc_deg - sign * 30.0 - 90.0;
+    graphics_draw_line(ctx, band_point(centre, a, b, BAND_RADIUS, psi, TICK_FROM),
+                       band_point(centre, a, b, BAND_RADIUS, psi, TICK_TO));
+  }
+}
+
 // ---------------------------------------------------------------- widgets
 
-static void draw_battery_icon(GContext *ctx, GPoint origin, int unused) {
-  (void)unused;
-  GRect box = GRect(origin.x, origin.y, BATTERY_ICON_W, READOUT_ICON_H);
-  GColor colour = s_battery <= 20 ? GColorRed : (s_charging ? GColorYellow : GColorGreen);
-  graphics_context_set_stroke_color(ctx, colour);
-  graphics_context_set_stroke_width(ctx, 2);
-  graphics_draw_rect(ctx, GRect(box.origin.x, box.origin.y + 3, box.size.w, box.size.h - 3));
-  graphics_context_set_fill_color(ctx, colour);
-  graphics_fill_rect(ctx, GRect(box.origin.x + 3, box.origin.y, box.size.w - 6, 3), 0, GCornerNone);
-  int fill = (box.size.h - 9) * s_battery / 100;
-  graphics_fill_rect(ctx, GRect(box.origin.x + 3, box.origin.y + box.size.h - 3 - fill,
-                                box.size.w - 6, fill), 0, GCornerNone);
+// Each readout is an icon with its number laid over it. A black box behind the
+// digits cuts the icon away where they cross, so the icon wraps round the
+// number instead of standing beside it.
+
+// The battery reaches this far left of its digits, and the cloud's digits sit
+// this far into the cloud, which is at least WEATHER_ICON_W across.
+#define BATTERY_LEAD 7
+#define WEATHER_LEAD 9
+#define WEATHER_ICON_W 36
+
+static GSize small_text_size(const char *text) {
+  return graphics_text_layout_get_content_size(text, s_font_small, GRect(0, 0, 120, 60),
+                                               GTextOverflowModeFill, GTextAlignmentLeft);
+}
+
+static void draw_digits(GContext *ctx, const char *text, int x, int w) {
+  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_fill_rect(ctx, GRect(x - 2, READOUT_DIGIT_TOP - 3, w + 4, SMALL_CAP_H + 6), 0, GCornerNone);
+  graphics_context_set_text_color(ctx, GColorWhite);
+  graphics_draw_text(ctx, text, s_font_small, GRect(x, READOUT_DIGIT_TOP - SMALL_CAP_TOP, w + 4, 40),
+                     GTextOverflowModeFill, GTextAlignmentLeft, NULL);
+}
+
+// An upright cell whose right side the digits cover.
+static void draw_battery_icon(GContext *ctx, int digits_x) {
+  int left = digits_x - BATTERY_LEAD, top = READOUT_DIGIT_TOP - 7;
+  graphics_context_set_fill_color(ctx, s_battery <= 20 ? GColorRed
+                                       : (s_charging ? GColorYellow : GColorGreen));
+  graphics_fill_rect(ctx, GRect(left + 3, top - 3, 6, 3), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(left, top, 12, 2), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(left, top, 2, 24), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(left, top + 22, 12, 2), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(left + 10, top, 2, 24), 0, GCornerNone);
 }
 
 static void cloud_shape(GContext *ctx, GPoint o, int grow) {
-  graphics_fill_circle(ctx, GPoint(o.x + 9, o.y + 13), 6 + grow);
-  graphics_fill_circle(ctx, GPoint(o.x + 18, o.y + 9), 8 + grow);
-  graphics_fill_circle(ctx, GPoint(o.x + 27, o.y + 13), 6 + grow);
-  graphics_fill_rect(ctx, GRect(o.x + 9, o.y + 13 - grow, 18, 6 + grow * 2), 0, GCornerNone);
+  graphics_fill_circle(ctx, GPoint(o.x + 8, o.y + 14), 6 + grow);
+  graphics_fill_circle(ctx, GPoint(o.x + 19, o.y + 9), 9 + grow);
+  graphics_fill_circle(ctx, GPoint(o.x + 31, o.y + 13), 7 + grow);
+  graphics_fill_rect(ctx, GRect(o.x + 8, o.y + 14 - grow, 23, 6 + grow * 2), 0, GCornerNone);
 }
 
+// o is the icon's origin: its visible left edge is o.x + 2, and the digits go
+// WEATHER_LEAD in from there and 14 below its top, under the left bumps.
 static void draw_weather_icon(GContext *ctx, GPoint o, int code) {
-  o.x -= 2;  // the cloud is drawn from x+3; this keeps its left edge on the icon box
   GColor blue = GColorVividCerulean;
-  bool clear = code <= 1;
-  if (clear) {
+  if (code <= 1) {
     graphics_context_set_stroke_color(ctx, GColorChromeYellow);
     graphics_context_set_stroke_width(ctx, 2);
-    GPoint c = GPoint(o.x + 18, o.y + 12);
+    GPoint c = GPoint(o.x + 30, o.y + 8);
     graphics_draw_circle(ctx, c, 6);
     for (int i = 0; i < 8; i++) {
       double a = i * 0.78539816339744830962;
@@ -413,38 +474,51 @@ static void draw_weather_icon(GContext *ctx, GPoint o, int code) {
   graphics_context_set_fill_color(ctx, GColorBlack);
   cloud_shape(ctx, o, -2);
 
+  // Rain, snow and lightning hang under the right bump, clear of the digits.
   bool snow = (code >= 71 && code <= 77) || code == 85 || code == 86;
   bool rain = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95;
   graphics_context_set_stroke_width(ctx, 2);
   if (rain) {
     graphics_context_set_stroke_color(ctx, blue);
-    for (int i = 0; i < 3; i++) {
-      graphics_draw_line(ctx, GPoint(o.x + 10 + i * 7, o.y + 22), GPoint(o.x + 8 + i * 7, o.y + 27));
+    for (int i = 0; i < 2; i++) {
+      graphics_draw_line(ctx, GPoint(o.x + 32 + i * 5, o.y + 23), GPoint(o.x + 30 + i * 5, o.y + 28));
     }
   }
   if (snow) {
     graphics_context_set_fill_color(ctx, GColorWhite);
-    for (int i = 0; i < 3; i++) graphics_fill_circle(ctx, GPoint(o.x + 10 + i * 7, o.y + 25), 1);
+    for (int i = 0; i < 2; i++) graphics_fill_circle(ctx, GPoint(o.x + 31 + i * 5, o.y + 25), 1);
   }
   if (code >= 95) {
     graphics_context_set_stroke_color(ctx, GColorYellow);
-    graphics_draw_line(ctx, GPoint(o.x + 19, o.y + 18), GPoint(o.x + 15, o.y + 24));
-    graphics_draw_line(ctx, GPoint(o.x + 15, o.y + 24), GPoint(o.x + 20, o.y + 24));
-    graphics_draw_line(ctx, GPoint(o.x + 20, o.y + 24), GPoint(o.x + 16, o.y + 30));
+    graphics_draw_line(ctx, GPoint(o.x + 33, o.y + 17), GPoint(o.x + 29, o.y + 23));
+    graphics_draw_line(ctx, GPoint(o.x + 29, o.y + 23), GPoint(o.x + 34, o.y + 23));
+    graphics_draw_line(ctx, GPoint(o.x + 34, o.y + 23), GPoint(o.x + 30, o.y + 29));
   }
 }
 
-// An icon and its number, centred together on cx, the icon's middle level
-// with the middle of the digits.
-static void draw_readout(GContext *ctx, int cx, int icon_w, const char *text,
-                         void (*icon)(GContext *, GPoint, int), int icon_arg) {
-  GSize size = graphics_text_layout_get_content_size(text, s_font_small, GRect(0, 0, 120, 60),
-                                                     GTextOverflowModeFill, GTextAlignmentLeft);
-  int left = cx - (icon_w + READOUT_GAP + size.w) / 2;
-  icon(ctx, GPoint(left, READOUT_TOP), icon_arg);
-  graphics_draw_text(ctx, text, s_font_small,
-                     GRect(left + icon_w + READOUT_GAP, READOUT_TOP + READOUT_TEXT_DY, size.w + 4, 60),
-                     GTextOverflowModeFill, GTextAlignmentLeft, NULL);
+// Battery and weather side by side, centred together under the time.
+static void draw_readouts(GContext *ctx, int cx) {
+  char battery[12], temp[12];
+  snprintf(battery, sizeof(battery), "%d", s_battery);
+  int battery_w = small_text_size(battery).w;
+  int width = BATTERY_LEAD + battery_w;
+  bool has_temp = s_settings.temp != NO_TEMP;
+  int temp_w = 0;
+  if (has_temp) {
+    snprintf(temp, sizeof(temp), "%d", (int)s_settings.temp);
+    temp_w = small_text_size(temp).w;
+    int weather_w = WEATHER_LEAD + temp_w;
+    width += READOUT_GAP + (weather_w > WEATHER_ICON_W ? weather_w : WEATHER_ICON_W);
+  }
+  int battery_x = cx - width / 2 + BATTERY_LEAD;
+  draw_battery_icon(ctx, battery_x);
+  draw_digits(ctx, battery, battery_x, battery_w);
+  if (has_temp) {
+    int temp_x = battery_x + battery_w + READOUT_GAP + WEATHER_LEAD;
+    draw_weather_icon(ctx, GPoint(temp_x - WEATHER_LEAD - 2, READOUT_DIGIT_TOP - 14),
+                      (int)s_settings.weather_code);
+    draw_digits(ctx, temp, temp_x, temp_w);
+  }
 }
 
 static void canvas_update(Layer *layer, GContext *ctx) {
@@ -457,36 +531,24 @@ static void canvas_update(Layer *layer, GContext *ctx) {
 
   draw_ring(ctx, centre, hw, hh);
 
+  // Cuts the tabs' inner ends to the panel's rounded outline.
   GRect panel = GRect(PANEL_X, PANEL_Y, bounds.size.w - 2 * PANEL_X, bounds.size.h - 2 * PANEL_Y);
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, panel, PANEL_RADIUS, GCornersAll);
-  graphics_context_set_stroke_color(ctx, GColorDarkGray);
-  graphics_context_set_stroke_width(ctx, 1);
-  graphics_draw_round_rect(ctx, panel, PANEL_RADIUS);
 
   draw_ring_glyphs(ctx, centre, hw, hh);
-
-  // Horizon marks, where the ecliptic rises and sets.
-  graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_rect(ctx, GRect(0, centre.y - 1, 4, 2), 0, GCornerNone);
-  graphics_fill_rect(ctx, GRect(bounds.size.w - 4, centre.y - 1, 4, 2), 0, GCornerNone);
-
   draw_constellations(ctx, centre, hw, hh);
+  draw_zodiac_ticks(ctx, centre, hw, hh);
 
   graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx, s_date_text, s_font_date, GRect(PANEL_X, DATE_TOP, panel.size.w, 40),
+  graphics_draw_text(ctx, s_date_text, s_font_small,
+                     GRect(0, DATE_CAP_TOP - SMALL_CAP_TOP, bounds.size.w, 40),
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
-  graphics_draw_text(ctx, s_time_text, s_font_time, GRect(PANEL_X - 4, TIME_TOP, panel.size.w + 8, 110),
+  graphics_draw_text(ctx, s_time_text, s_font_time,
+                     GRect(0, TIME_DIGIT_TOP - TIME_CAP_TOP, bounds.size.w, 120),
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
 
-  char text[12];
-  snprintf(text, sizeof(text), "%d%%", s_battery);
-  draw_readout(ctx, bounds.size.w / 2 - READOUT_SPREAD, BATTERY_ICON_W, text, draw_battery_icon, 0);
-  if (s_settings.temp != NO_TEMP) {
-    snprintf(text, sizeof(text), "%d\xC2\xB0", (int)s_settings.temp);
-    draw_readout(ctx, bounds.size.w / 2 + READOUT_SPREAD, WEATHER_ICON_W, text, draw_weather_icon,
-                 (int)s_settings.weather_code);
-  }
+  draw_readouts(ctx, centre.x);
 }
 
 // ----------------------------------------------------------- phone and tick
@@ -577,9 +639,8 @@ static void window_load(Window *window) {
 static void window_unload(Window *window) { layer_destroy(s_canvas); }
 
 static void init(void) {
-  s_font_time = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_SAIRA_92));
-  s_font_date = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_SAIRA_30));
-  s_font_small = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_SAIRA_34));
+  s_font_time = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_SAIRA_100));
+  s_font_small = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_SAIRA_28));
   s_font_glyph = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_NOTO_16));
 
   load_settings();
@@ -605,7 +666,6 @@ static void deinit(void) {
   battery_state_service_unsubscribe();
   window_destroy(s_window);
   fonts_unload_custom_font(s_font_time);
-  fonts_unload_custom_font(s_font_date);
   fonts_unload_custom_font(s_font_small);
   fonts_unload_custom_font(s_font_glyph);
 }

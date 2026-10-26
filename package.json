@@ -20,21 +20,15 @@
       "media": [
         {
           "type": "font",
-          "name": "FONT_SAIRA_92",
+          "name": "FONT_SAIRA_100",
           "file": "fonts/SairaExtraCondensed-Bold.ttf",
           "characterRegex": "[0-9:]"
         },
         {
           "type": "font",
-          "name": "FONT_SAIRA_34",
+          "name": "FONT_SAIRA_28",
           "file": "fonts/SairaExtraCondensed-Bold.ttf",
-          "characterRegex": "[0-9%\u00B0-]"
-        },
-        {
-          "type": "font",
-          "name": "FONT_SAIRA_30",
-          "file": "fonts/SairaExtraCondensed-Bold.ttf",
-          "characterRegex": "[a-z0-9 ]"
+          "characterRegex": "[A-Z0-9 -]"
         },
         {
           "type": "font",

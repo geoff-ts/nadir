@@ -9,11 +9,15 @@ are, alongside the usual time, date, battery and weather. Target: Pebble Time
 - **Outer ring** is the ecliptic bent into a loop, with a coloured tab per
   body. It is turned so the part of the ecliptic that is rising sits at the
   middle of the left edge and the part that is setting at the middle of the
-  right edge. The upper half of the ring is above your horizon, the lower half below it;
-  two white ticks at the edges mark the horizon (it is the halfway line).
+  right edge. The upper half of the ring is above your horizon, the lower half below it,
+  so the horizon is the halfway line. A body that is up has a solid tab; one
+  below the horizon keeps only the two sides of its tab and a coloured symbol.
   Zenith is the top; east is left, west is right (you are facing south).
 - **Inner band** carries the twelve zodiac constellations on the same
-  mapping, so the whole thing turns together once a day.
+  mapping, so the whole thing turns together once a day. White ticks mark
+  every 30 degrees of longitude, where one sign hands over to the next.
+- **Readouts** under the time: battery charge and temperature, as bare
+  numbers laid over their icons.
 - **The ISS** is not on the ecliptic, so it is placed by elevation instead:
   straight up is the top of the ring, the horizon is the middle of either
   side, and it goes to the left or right of the ring by whether it is in the
