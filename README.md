@@ -18,8 +18,9 @@ are, alongside the usual time, date, battery and weather. Target: Pebble Time
   every 30 degrees of longitude, where one sign hands over to the next.
 - **Readouts** under the time: battery charge and temperature, as bare
   numbers laid over their icons.
-- **Tap or flick** the watch and the sky rolls 4 hours ahead, pauses, then snaps
-  back to now; the clock keeps the real time (`ROLL_*` in `main.c`).
+- **Tap the screen or flick your wrist** and the sky rolls 4 hours ahead,
+  pauses, then snaps back to now; the clock keeps the real time (`ROLL_*`
+  in `main.c`). Listening for touch keeps the touch sensor powered.
 - **The ISS** is not on the ecliptic, so it is placed by elevation instead:
   straight up is the top of the ring, the horizon is the middle of either
   side, and it goes to the left or right of the ring by whether it is in the

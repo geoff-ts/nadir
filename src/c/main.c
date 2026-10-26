@@ -20,8 +20,10 @@
 #define ROLL_HOURS 4
 #define ROLL_FORWARD_MS 900
 #define ROLL_HOLD_MS 500
-#define ROLL_BACK_MS 350
+#define ROLL_BACK_MS 20
 #define ROLL_TOTAL_MS (ROLL_FORWARD_MS + ROLL_HOLD_MS + ROLL_BACK_MS)
+#define TOUCH_TAP_MAX_MS 400
+#define TOUCH_TAP_MAX_MOVE 12
 #define PANEL_X 14
 #define PANEL_Y 17
 #define PANEL_RADIUS 14
@@ -624,7 +626,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 }
 
 // A tap or flick of the wrist rolls the sky ROLL_HOURS ahead, easing in
-// and out, holds there for a moment, then snaps back to now faster still.
+// and out, holds there for a moment, then snaps straight back to now.
 static void roll_update(Animation *animation, const AnimationProgress progress) {
   double ms = (double)progress / ANIMATION_NORMALIZED_MAX * ROLL_TOTAL_MS;
   double ahead;
@@ -649,7 +651,7 @@ static void roll_teardown(Animation *animation) {
 
 static const AnimationImplementation s_roll_impl = {.update = roll_update, .teardown = roll_teardown};
 
-static void tap_handler(AccelAxisType axis, int32_t direction) {
+static void start_roll(void) {
   if (s_roll) return;
   s_roll = animation_create();
   if (!s_roll) return;
@@ -657,6 +659,32 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
   animation_set_duration(s_roll, ROLL_TOTAL_MS);
   animation_set_curve(s_roll, AnimationCurveLinear);
   animation_schedule(s_roll);
+}
+
+static void tap_handler(AccelAxisType axis, int32_t direction) { start_roll(); }
+
+static int64_t now_ms(void) {
+  time_t seconds;
+  uint16_t ms;
+  time_ms(&seconds, &ms);
+  return (int64_t)seconds * 1000 + ms;
+}
+
+// A short touch on the screen, not a drag, rolls the sky too.
+static void touch_handler(const TouchEvent *event, void *context) {
+  static int64_t down_ms;
+  static GPoint down_at, last_at;
+  if (event->type == TouchEvent_Touchdown) {
+    down_ms = now_ms();
+    down_at = last_at = GPoint(event->x, event->y);
+  } else if (event->type == TouchEvent_PositionUpdate) {
+    last_at = GPoint(event->x, event->y);
+  } else {
+    int dx = last_at.x - down_at.x, dy = last_at.y - down_at.y;
+    if (now_ms() - down_ms <= TOUCH_TAP_MAX_MS && dx * dx + dy * dy <= TOUCH_TAP_MAX_MOVE * TOUCH_TAP_MAX_MOVE) {
+      start_roll();
+    }
+  }
 }
 
 static void battery_handler(BatteryChargeState state) {
@@ -709,11 +737,13 @@ static void init(void) {
   battery_state_service_subscribe(battery_handler);
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
   accel_tap_service_subscribe(tap_handler);
+  touch_service_subscribe(touch_handler, NULL);
   app_message_register_inbox_received(inbox_received);
   app_message_open(256, 32);
 }
 
 static void deinit(void) {
+  touch_service_unsubscribe();
   accel_tap_service_unsubscribe();
   tick_timer_service_unsubscribe();
   battery_state_service_unsubscribe();
