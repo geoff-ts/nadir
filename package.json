@@ -1,7 +1,7 @@
 {
   "name": "nadir",
   "author": "ThinkSwift",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {
@@ -26,20 +26,20 @@
       "media": [
         {
           "type": "font",
-          "name": "FONT_STARLOOM_88",
-          "file": "fonts/Starloom.ttf",
+          "name": "FONT_NADIR_CLOCK_54",
+          "file": "fonts/NadirClock-Regular.ttf",
           "characterRegex": "[0-9:]"
         },
         {
           "type": "font",
-          "name": "FONT_STARLOOM_27",
-          "file": "fonts/Starloom.ttf",
+          "name": "FONT_BRUNO_ACE_21",
+          "file": "fonts/BrunoAce-Regular.ttf",
           "characterRegex": "[0-9-]"
         },
         {
           "type": "font",
-          "name": "FONT_STARLOOM_24",
-          "file": "fonts/Starloom.ttf",
+          "name": "FONT_BRUNO_ACE_19",
+          "file": "fonts/BrunoAce-Regular.ttf",
           "characterRegex": "[A-Z0-9 ]"
         },
         {

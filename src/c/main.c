@@ -37,14 +37,14 @@
 #define TICK_FROM 6
 #define TICK_TO 11
 #define NO_TEMP INT32_MIN
-#define SMALL_CAP_TOP 8  // FONT_STARLOOM_27: from the top of the text box to the top of a capital
-#define SMALL_CAP_H 19
-#define TIME_CAP_TOP 26  // the same for FONT_STARLOOM_88
-#define DATE_TEXT_TOP 7  // the same for FONT_STARLOOM_24
-#define DATE_CAP_TOP 58
-#define TIME_DIGIT_TOP 83
+#define SMALL_CAP_TOP 6  // FONT_BRUNO_ACE_21: from the top of the text box to the top of a digit
+#define SMALL_CAP_H 15
+#define TIME_CAP_TOP 16  // the same for FONT_NADIR_CLOCK_54
+#define DATE_TEXT_TOP 5  // the same for FONT_BRUNO_ACE_19
+#define DATE_CAP_TOP 73
+#define TIME_DIGIT_TOP 95
 #define TIME_BOLD 1
-#define READOUT_DIGIT_TOP 163
+#define READOUT_DIGIT_TOP 151
 #define READOUT_GAP 16
 
 enum {
@@ -988,9 +988,9 @@ static void window_load(Window *window) {
 static void window_unload(Window *window) { layer_destroy(s_canvas); }
 
 static void init(void) {
-  s_font_time = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_STARLOOM_88));
-  s_font_small = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_STARLOOM_27));
-  s_font_date = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_STARLOOM_24));
+  s_font_time = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_NADIR_CLOCK_54));
+  s_font_small = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_BRUNO_ACE_21));
+  s_font_date = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_BRUNO_ACE_19));
   s_font_glyph = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_NOTO_16));
 
   load_settings();
