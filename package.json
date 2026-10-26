@@ -20,14 +20,14 @@
       "media": [
         {
           "type": "font",
-          "name": "FONT_SAIRA_100",
-          "file": "fonts/SairaExtraCondensed-Bold.ttf",
+          "name": "FONT_STARLOOM_88",
+          "file": "fonts/Starloom.ttf",
           "characterRegex": "[0-9:]"
         },
         {
           "type": "font",
-          "name": "FONT_SAIRA_28",
-          "file": "fonts/SairaExtraCondensed-Bold.ttf",
+          "name": "FONT_STARLOOM_27",
+          "file": "fonts/Starloom.ttf",
           "characterRegex": "[A-Z0-9 -]"
         },
         {

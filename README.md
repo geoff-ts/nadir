@@ -107,7 +107,9 @@ can reach. Notes on how the pieces fit:
 
 ## Fonts
 
-Saira Extra Condensed Bold (an open stand-in for Agency FB, which cannot be
-bundled) and Noto Sans Symbols, both SIL OFL 1.1. See
-`resources/fonts/LICENSES.md`. The Sun's symbol is drawn in code because Noto
-Sans Symbols has no glyph for it.
+Starloom (zerologic studio) for the clock, date and readouts, and Noto Sans
+Symbols (SIL OFL 1.1) for the planet symbols. Starloom is free for personal
+use only: publishing Nadir, on the Rebble store or in a public repository,
+needs a commercial licence for it first. See `resources/fonts/LICENSES.md`.
+The Sun's symbol is drawn in code because Noto Sans Symbols has no glyph for
+it.
