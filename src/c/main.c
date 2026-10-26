@@ -17,6 +17,9 @@
 #define DEFAULT_LON 151.2093
 #define TLE_MAX_AGE_DAYS 14.0
 #define REQUEST_EVERY_MINUTES 30
+#define ROLL_HOURS 8
+#define ROLL_FORWARD_MS 900
+#define ROLL_BACK_MS 350
 #define PANEL_X 14
 #define PANEL_Y 17
 #define PANEL_RADIUS 14
@@ -75,6 +78,8 @@ static char s_date_text[16];
 static int s_battery = 100;
 static bool s_charging;
 static int s_minutes_since_request;
+static time_t s_offset;  // how far ahead of now the face is drawn, during a roll
+static Animation *s_roll;
 
 // ---------------------------------------------------------------- geometry
 
@@ -553,6 +558,11 @@ static void canvas_update(Layer *layer, GContext *ctx) {
 
 // ----------------------------------------------------------- phone and tick
 
+static void refresh(void) {
+  update_sky(time(NULL) + s_offset);
+  layer_mark_dirty(s_canvas);
+}
+
 static void request_refresh(void) {
   DictionaryIterator *out;
   if (app_message_outbox_begin(&out) != APP_MSG_OK) return;
@@ -598,14 +608,47 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
     persist_write_int(PERSIST_TEMP, temp->value->int32);
     persist_write_int(PERSIST_WCODE, code->value->int32);
   }
-  update_sky(time(NULL));
-  layer_mark_dirty(s_canvas);
+  refresh();
 }
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
-  update_sky(time(NULL));
-  layer_mark_dirty(s_canvas);
+  refresh();
   if (++s_minutes_since_request >= REQUEST_EVERY_MINUTES) request_refresh();
+}
+
+// A tap or flick of the wrist rolls the whole face ROLL_HOURS ahead, easing in
+// and out, then snaps it back to now faster still.
+static void roll_update(Animation *animation, const AnimationProgress progress) {
+  double p = (double)progress / ANIMATION_NORMALIZED_MAX;
+  double split = (double)ROLL_FORWARD_MS / (ROLL_FORWARD_MS + ROLL_BACK_MS);
+  double ahead;
+  if (p < split) {
+    double t = p / split;
+    ahead = t * t * (3.0 - 2.0 * t);
+  } else {
+    double t = 1.0 - (p - split) / (1.0 - split);
+    ahead = t * t;
+  }
+  s_offset = (time_t)(ahead * ROLL_HOURS * 3600);
+  refresh();
+}
+
+static void roll_teardown(Animation *animation) {
+  s_roll = NULL;
+  s_offset = 0;
+  refresh();
+}
+
+static const AnimationImplementation s_roll_impl = {.update = roll_update, .teardown = roll_teardown};
+
+static void tap_handler(AccelAxisType axis, int32_t direction) {
+  if (s_roll) return;
+  s_roll = animation_create();
+  if (!s_roll) return;
+  animation_set_implementation(s_roll, &s_roll_impl);
+  animation_set_duration(s_roll, ROLL_FORWARD_MS + ROLL_BACK_MS);
+  animation_set_curve(s_roll, AnimationCurveLinear);
+  animation_schedule(s_roll);
 }
 
 static void battery_handler(BatteryChargeState state) {
@@ -657,11 +700,13 @@ static void init(void) {
 
   battery_state_service_subscribe(battery_handler);
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+  accel_tap_service_subscribe(tap_handler);
   app_message_register_inbox_received(inbox_received);
   app_message_open(256, 32);
 }
 
 static void deinit(void) {
+  accel_tap_service_unsubscribe();
   tick_timer_service_unsubscribe();
   battery_state_service_unsubscribe();
   window_destroy(s_window);

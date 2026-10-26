@@ -18,6 +18,8 @@ are, alongside the usual time, date, battery and weather. Target: Pebble Time
   every 30 degrees of longitude, where one sign hands over to the next.
 - **Readouts** under the time: battery charge and temperature, as bare
   numbers laid over their icons.
+- **Tap or flick** the watch and the whole face rolls 8 hours ahead, clock
+  included, then snaps back to now (`ROLL_*` in `main.c`).
 - **The ISS** is not on the ecliptic, so it is placed by elevation instead:
   straight up is the top of the ring, the horizon is the middle of either
   side, and it goes to the left or right of the ring by whether it is in the
