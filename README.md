@@ -1,17 +1,36 @@
 # Nadir
 
-A Pebble Time 2 watchface that shows where the Sun, Moon, planets and space
-stations are in your sky right now, around the time, date and two readouts
-of your choice.
+A Pebble watchface that shows where the Sun, Moon, planets and space
+stations are in your sky right now, around the time (digits or hands), the
+date and two readouts of your choice.
 
 <p>
+  <img src="docs/screenshots/emery-flick.gif" width="200" alt="A flick of the wrist rolls the sky four hours ahead and back">
+  <img src="docs/screenshots/gabbro/hands.png" width="228" alt="Nadir with hands on the Pebble Round 2, cyan on navy">
   <img src="docs/screenshots/emery-day.png" width="200" alt="Nadir by day: the Sun, Mercury and Venus up top, the time 10:46, battery 78 and 21 degrees with cloud">
   <img src="docs/screenshots/emery-night.png" width="200" alt="Nadir at night: the Moon and Saturn up, heart rate 64 and 8421 steps">
   <img src="docs/screenshots/emery-tiangong-pass.png" width="200" alt="Nadir during a Tiangong pass: Tiangong's blue tab high on the left">
 </p>
 
-Runs on the Pebble Time 2 (`emery`, 200 x 228, 64 colours). All the sky maths
-runs on the watch, so it keeps working with the phone away.
+Runs on every Pebble but the original Pebble and Steel, whose 24 KB of app
+memory it would not fit:
+
+| Platform | Watches | Screen |
+|---|---|---|
+| `emery` | Pebble Time 2 | 200 x 228, colour |
+| `gabbro` | Pebble Round 2 | 260 round, colour |
+| `basalt` | Pebble Time, Time Steel | 144 x 168, colour |
+| `chalk` | Pebble Time Round | 180 round, colour |
+| `diorite` | Pebble 2 | 144 x 168, black and white |
+| `flint` | Pebble 2 Duo | 144 x 168, black and white |
+
+The layout was drawn for the Time 2 and checked in the emulator on the
+Round 2 and Pebble 2; the others share those layouts but have not been seen
+running yet. On round screens the ring is a circle. On black-and-white
+screens tabs and icons are plain white, since colours dither into speckle.
+
+All the sky maths runs on the watch, so it keeps working with the phone
+away.
 
 ## How to read it
 
@@ -52,6 +71,12 @@ The gear beside Nadir in the Pebble phone app opens its settings:
 
 - which way the face looks: automatic, facing south (northern hemisphere) or
   facing north (southern hemisphere)
+- the time as digits or hands. With hands, the date sits above the centre,
+  the readouts below it and twelve hour dots around it; where a hand crosses
+  the date, the date shows through in grey
+- a background colour and an accent colour, which colours the text, hands,
+  ticks and constellations; the readout icons can keep their own colours or
+  take the accent (colour screens only)
 - what each readout shows, and Celsius or Fahrenheit
 - which satellites to show: the ISS (on by default), Tiangong and Hubble
   (off by default; Hubble is only seen from within about 30 degrees of the
@@ -90,7 +115,7 @@ Regenerate `src/c/sky_data.h` with
 
 ## Building
 
-You need the Pebble SDK (4.33.1 or later) with the `emery` platform; see
+You need the Pebble SDK (4.33.1 or later); see
 [developer.repebble.com](https://developer.repebble.com).
 
 ```bash

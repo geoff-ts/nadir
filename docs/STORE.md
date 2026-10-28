@@ -28,17 +28,31 @@ portal puts a listing live straight away; there is no separate review step.
 | Name | Nadir |
 | Category | Not asked for watchfaces (watch apps only) |
 | Description | See below |
-| Screenshots | At least one per supported platform. Nadir supports only Emery: `docs/screenshots/emery-*.png`, 200 x 228, unframed |
+| Screenshots | Up to 5 per platform, each at that screen's size, unframed; PNG, JPEG or GIF (an animated GIF is fine). The first is the listing's main image. See "Screenshots by platform" below |
 | Banner | Optional for watchfaces: `docs/banner.png`, 720 x 320, drawn by `tools/make-banner.py` |
 | Icons | Watch apps only; not needed |
 | Website / source URL | Optional: the public repository |
 | Release notes | Required for the first upload; see below |
 | App binary | The `.pbw` |
 
-Where the portal asks for 144 x 168 screenshots, use
-`docs/screenshots/144x168/`: the same captures scaled down to 144 x 164 with
-a 2 px black band top and bottom (the face itself is laid out only for
-200 x 228).
+## Screenshots by platform
+
+The portal keeps an asset collection (description and screenshots) for each
+platform, at that platform's screen size:
+
+| Platform | Size | Use |
+|---|---|---|
+| emery (Time 2) | 200 x 228 | `docs/screenshots/emery-flick.gif` first, then `emery-hands.png`, `emery-day.png`, `emery-night.png`, `emery-tiangong-pass.png` |
+| gabbro (Round 2) | 260 x 260 | `docs/screenshots/gabbro/`: `flick.gif`, `hands.png`, `day.png` |
+| basalt (Time) | 144 x 168 | `docs/screenshots/144x168/`: `flick.gif`, `emery-hands.png`, `emery-day.png`, ... |
+| chalk (Time Round) | 180 x 180 | `docs/screenshots/chalk/`: `flick.gif`, `hands.png`, `day.png` |
+| diorite (Pebble 2), flint (2 Duo) | 144 x 168 | none needed: the store shows the basalt set when a platform has none |
+
+The first screenshot in each set is the listing's main image, so put the
+flick GIF first. The basalt and chalk sets are stand-ins, scaled down from the
+Time 2 and Round 2 captures, because those emulators would not start; replace
+them with real captures when they do. The GIFs are made by stepping the roll
+one frame per emulator tap in a test build and capturing each frame.
 
 Screenshots in the listing must be plain watch-screen captures. Framed images
 (a screenshot inside a watch drawing) are only for banners. Take fresh
@@ -87,6 +101,11 @@ automatically once you leave the tropics, or choose a view in settings. The
 sky slides back smoothly after a roll, and you can set how long the roll
 takes, from 0.5 to 5 seconds.
 
+**Release notes for 1.3.0:** Now on the Pebble Time, Time Round, Pebble 2,
+Pebble 2 Duo and Pebble Round 2 as well as the Time 2. New in settings: show
+the time with hands, choose a background and an accent colour, and draw the
+readout icons in the accent.
+
 ## Later releases
 
 1. Bump `"version"` in `package.json` (Pebble shows it as major.minor).
@@ -94,8 +113,9 @@ takes, from 0.5 to 5 seconds.
 3. In the portal, open Nadir and publish a new release with the `.pbw` and
    its release notes. Screenshot changes take effect immediately.
 
-## Other platforms
+## Platforms
 
-Nadir targets only `emery` (Pebble Time 2). The layout is drawn for 200 x 228;
-other watches would need their own layout constants and their own
-screenshots in the listing.
+Nadir builds for basalt, chalk, diorite, emery, flint and gabbro. Each
+screen's layout constants are at the top of `src/c/main.c`. Aplite (the
+original Pebble and Steel) is left out: its 24 KB of app memory is less than
+Nadir's code and data need.
