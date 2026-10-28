@@ -1,7 +1,7 @@
 {
   "name": "nadir",
   "author": "Geoff Brom",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {
@@ -20,7 +20,7 @@
     "messageKeys": [
       "REQUEST", "LAT", "LON", "TLE_LINES", "TEMP", "WCODE",
       "READOUT_LEFT", "READOUT_RIGHT", "TEMP_UNIT", "ROLL_ON", "ROLL_HOURS",
-      "TLE_CSS", "TLE_HST", "SAT_ISS", "SAT_CSS", "SAT_HST", "VIEW"
+      "TLE_CSS", "TLE_HST", "SAT_ISS", "SAT_CSS", "SAT_HST", "VIEW", "ROLL_TIME"
     ],
     "resources": {
       "media": [

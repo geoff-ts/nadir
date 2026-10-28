@@ -24,10 +24,12 @@
 #define PASS_UPDATE_MS 3000
 #define PASS_MIN_EL_DEG 10.0
 #define DEFAULT_ROLL_HOURS 4
-#define ROLL_FORWARD_MS 900
-#define ROLL_HOLD_MS 500
+// The roll ahead and the pause together take the chosen roll time, split 9 : 5;
+// the slide back always takes ROLL_BACK_MS.
+#define DEFAULT_ROLL_TENTHS 14
+#define MIN_ROLL_TENTHS 5
+#define MAX_ROLL_TENTHS 50
 #define ROLL_BACK_MS 200
-#define ROLL_TOTAL_MS (ROLL_FORWARD_MS + ROLL_HOLD_MS + ROLL_BACK_MS)
 #define PANEL_X 14
 #define PANEL_Y 17
 #define PANEL_RADIUS 14
@@ -99,6 +101,7 @@ typedef struct {
   uint8_t roll_hours;
   bool sat[SAT_COUNT];  // added after the first release: older saves stop short of it
   uint8_t view;  // added in 1.1
+  uint8_t roll_tenths;  // added in 1.2: the roll ahead and pause, in tenths of a second
 } Prefs;
 
 typedef struct {
@@ -125,7 +128,8 @@ static Layer *s_canvas;
 static Settings s_settings = {.lat = DEFAULT_LAT, .lon = DEFAULT_LON, .temp = NO_TEMP};
 static Sky s_sky;
 static Prefs s_prefs = {.readout = {READOUT_BATTERY, READOUT_WEATHER}, .roll = true,
-                        .roll_hours = DEFAULT_ROLL_HOURS, .sat = {true, false, false}};
+                        .roll_hours = DEFAULT_ROLL_HOURS, .sat = {true, false, false},
+                        .roll_tenths = DEFAULT_ROLL_TENTHS};
 static int s_heart_bpm;  // 0 while unknown
 static int s_steps = -1;  // -1 while unknown
 static GFont s_font_time;
@@ -856,6 +860,11 @@ static bool read_prefs(DictionaryIterator *iter) {
     if (shown) { s_prefs.sat[sat] = tuple_int(shown) != 0; changed = true; }
   }
   Tuple *hours = dict_find(iter, MESSAGE_KEY_ROLL_HOURS);
+  Tuple *tenths = dict_find(iter, MESSAGE_KEY_ROLL_TIME);
+  if (tenths && tuple_int(tenths) >= MIN_ROLL_TENTHS && tuple_int(tenths) <= MAX_ROLL_TENTHS) {
+    s_prefs.roll_tenths = (uint8_t)tuple_int(tenths);
+    changed = true;
+  }
   Tuple *view = dict_find(iter, MESSAGE_KEY_VIEW);
   if (view && tuple_int(view) >= VIEW_AUTO && tuple_int(view) <= VIEW_SOUTH) {
     s_prefs.view = (uint8_t)tuple_int(view);
@@ -909,16 +918,20 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 
 // A tap or flick of the wrist rolls the sky s_prefs.roll_hours ahead, easing in
 // and out, holds there for a moment, then slides quickly back to now.
+static int roll_forward_ms(void) { return s_prefs.roll_tenths * 100 * 9 / 14; }
+static int roll_hold_ms(void) { return s_prefs.roll_tenths * 100 - roll_forward_ms(); }
+
 static void roll_update(Animation *animation, const AnimationProgress progress) {
-  double ms = (double)progress / ANIMATION_NORMALIZED_MAX * ROLL_TOTAL_MS;
+  double forward_ms = roll_forward_ms(), hold_ms = roll_hold_ms();
+  double ms = (double)progress / ANIMATION_NORMALIZED_MAX * (forward_ms + hold_ms + ROLL_BACK_MS);
   double ahead;
-  if (ms < ROLL_FORWARD_MS) {
-    double t = ms / ROLL_FORWARD_MS;
+  if (ms < forward_ms) {
+    double t = ms / forward_ms;
     ahead = t * t * (3.0 - 2.0 * t);
-  } else if (ms < ROLL_FORWARD_MS + ROLL_HOLD_MS) {
+  } else if (ms < forward_ms + hold_ms) {
     ahead = 1.0;
   } else {
-    double t = 1.0 - (ms - ROLL_FORWARD_MS - ROLL_HOLD_MS) / ROLL_BACK_MS;
+    double t = 1.0 - (ms - forward_ms - hold_ms) / ROLL_BACK_MS;
     ahead = t * t;
   }
   s_offset = (time_t)(ahead * s_prefs.roll_hours * 3600);
@@ -938,7 +951,7 @@ static void start_roll(void) {
   s_roll = animation_create();
   if (!s_roll) return;
   animation_set_implementation(s_roll, &s_roll_impl);
-  animation_set_duration(s_roll, ROLL_TOTAL_MS);
+  animation_set_duration(s_roll, roll_forward_ms() + roll_hold_ms() + ROLL_BACK_MS);
   animation_set_curve(s_roll, AnimationCurveLinear);
   animation_schedule(s_roll);
 }

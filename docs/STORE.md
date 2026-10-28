@@ -86,6 +86,11 @@ to show the sky facing north, with east on the right. It switches
 automatically once you leave the tropics, or choose a view in settings. The
 sky slides back after a roll instead of jumping.
 
+**Release notes for 1.2.0:** Choose how long the sky roll takes, from 0.5 to
+5 seconds, in settings.
+
+(If 1.1.0 was never published, combine the two into one 1.2.0 note.)
+
 ## Later releases
 
 1. Bump `"version"` in `package.json` (Pebble shows it as major.minor).

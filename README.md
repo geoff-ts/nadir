@@ -56,7 +56,9 @@ The gear beside Nadir in the Pebble phone app opens its settings:
 - which satellites to show: the ISS (on by default), Tiangong and Hubble
   (off by default; Hubble is only seen from within about 30 degrees of the
   equator)
-- whether a flick rolls the sky, and by how many hours (1 to 12, default 4)
+- whether a flick rolls the sky, by how many hours (1 to 12, default 4), and
+  how long the roll ahead and pause take (0.5 to 5 seconds, default 1.4; the
+  slide back always takes 0.2)
 
 The watch keeps the choices, so they survive a restart.
 

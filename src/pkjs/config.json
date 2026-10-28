@@ -128,6 +128,16 @@
         "min": 1,
         "max": 12,
         "step": 1
+      },
+      {
+        "type": "slider",
+        "messageKey": "ROLL_TIME",
+        "label": "Roll time (seconds)",
+        "description": "How long the roll ahead and the pause take. The slide back to now always takes 0.2 seconds.",
+        "defaultValue": 1.4,
+        "min": 0.5,
+        "max": 5,
+        "step": 0.1
       }
     ]
   },
