@@ -77,17 +77,27 @@
 #define READOUT_GAP 10
 #endif
 
+// How far above the centre the analogue face's date sits, as a share of the
+// hands' reach: lower on round screens, where the 10 and 2 o'clock ticks come in.
+#if defined(PBL_ROUND)
+#define ANALOGUE_DATE_AT 0.46
+#else
+#define ANALOGUE_DATE_AT 0.62
+#endif
+
 // The clock and date fonts: the larger pair on the 200-px-and-wider screens.
 #if PBL_DISPLAY_WIDTH >= 200
 #define CLOCK_FONT RESOURCE_ID_FONT_NADIR_CLOCK_54
 #define TIME_CAP_TOP 16  // from the top of the text box to the top of a digit
 #define DATE_FONT RESOURCE_ID_FONT_BRUNO_ACE_19
 #define DATE_TEXT_TOP 5
+#define DATE_CAP_H 14
 #else
 #define CLOCK_FONT RESOURCE_ID_FONT_NADIR_CLOCK_38
 #define TIME_CAP_TOP 11
 #define DATE_FONT RESOURCE_ID_FONT_BRUNO_ACE_14
 #define DATE_TEXT_TOP 4
+#define DATE_CAP_H 10
 #endif
 
 enum {
@@ -141,6 +151,9 @@ typedef struct {
   uint8_t view;  // added in 1.1
   uint8_t roll_tenths;  // added in 1.2: the roll ahead and pause, in tenths of a second
   bool analogue;  // added in 1.3: hands instead of digits
+  bool hour_ticks;  // 1.3: tick marks rather than dots for the hours
+  uint8_t bg;  // 1.3: background colour, as GColor argb
+  uint8_t accent;  // 1.3: the hands' (or the digits') colour
 } Prefs;
 
 typedef struct {
@@ -168,7 +181,8 @@ static Settings s_settings = {.lat = DEFAULT_LAT, .lon = DEFAULT_LON, .temp = NO
 static Sky s_sky;
 static Prefs s_prefs = {.readout = {READOUT_BATTERY, READOUT_WEATHER}, .roll = true,
                         .roll_hours = DEFAULT_ROLL_HOURS, .sat = {true, false, false},
-                        .roll_tenths = DEFAULT_ROLL_TENTHS};
+                        .roll_tenths = DEFAULT_ROLL_TENTHS,
+                        .bg = GColorBlackARGB8, .accent = GColorWhiteARGB8};
 static int s_heart_bpm;  // 0 while unknown
 static int s_steps = -1;  // -1 while unknown
 static GFont s_font_time;
@@ -333,6 +347,10 @@ static bool below_horizon(double psi) {
 // Black-and-white screens dither colours into a speckle that hides the
 // glyphs, so there every tab and icon is plain white.
 #define INK(colour) PBL_IF_COLOR_ELSE(colour, GColorWhite)
+
+// The chosen background and accent; black and white on black-and-white screens.
+static GColor bg_color(void) { return PBL_IF_COLOR_ELSE(((GColor){.argb = s_prefs.bg}), GColorBlack); }
+static GColor accent_color(void) { return PBL_IF_COLOR_ELSE(((GColor){.argb = s_prefs.accent}), GColorWhite); }
 
 static GColor body_color(int body) {
 #if defined(PBL_BW)
@@ -633,7 +651,7 @@ static GSize small_text_size(const char *text) {
 }
 
 static void draw_digits(GContext *ctx, const char *text, int x, int w) {
-  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_context_set_fill_color(ctx, bg_color());
   graphics_fill_rect(ctx, GRect(x - 2, s_readout_top - 3, w + 4, SMALL_CAP_H + 6), 0, GCornerNone);
   graphics_context_set_text_color(ctx, GColorWhite);
   graphics_draw_text(ctx, text, s_font_small, GRect(x, s_readout_top - SMALL_CAP_TOP, w + 4, 40),
@@ -679,7 +697,7 @@ static void draw_weather_icon(GContext *ctx, int digits_x) {
   }
   graphics_context_set_fill_color(ctx, blue);
   cloud_shape(ctx, o, 0);
-  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_context_set_fill_color(ctx, bg_color());
   cloud_shape(ctx, o, -2);
 
   // Rain, snow and lightning hang under the right bump, clear of the digits.
@@ -722,7 +740,7 @@ static void draw_heart_icon(GContext *ctx, int digits_x) {
   GPoint o = GPoint(digits_x - s_readout_lead[READOUT_HEART] - 2, s_readout_top - 15);
   graphics_context_set_fill_color(ctx, INK(GColorFolly));
   heart_shape(ctx, o, 0);
-  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_context_set_fill_color(ctx, bg_color());
   heart_shape(ctx, o, -2);
 }
 
@@ -801,11 +819,12 @@ static void draw_readouts(GContext *ctx, int cx) {
   }
 }
 
-// A hand from the centre, outlined in black so it reads over the stars and text.
+// A hand from the centre, edged in the background colour so it reads over the
+// stars and text.
 static void draw_hand(GContext *ctx, GPoint centre, double deg, double length, int width, GColor colour) {
   double rad = deg * 0.017453292519943295;
   GPoint tip = GPoint(centre.x + round_px(length * astro_sin(rad)), centre.y - round_px(length * astro_cos(rad)));
-  graphics_context_set_stroke_color(ctx, GColorBlack);
+  graphics_context_set_stroke_color(ctx, bg_color());
   graphics_context_set_stroke_width(ctx, width + 4);
   graphics_draw_line(ctx, centre, tip);
   graphics_context_set_stroke_color(ctx, colour);
@@ -813,34 +832,94 @@ static void draw_hand(GContext *ctx, GPoint centre, double deg, double length, i
   graphics_draw_line(ctx, centre, tip);
 }
 
-// The analogue face: the date above the centre, the readouts below it, twelve
-// hour dots just inside the constellation band, and the hands on top.
+static void draw_hands(GContext *ctx, GPoint centre, double radius, GColor colour) {
+  int width = PBL_DISPLAY_WIDTH >= 200 ? 5 : 4;
+  draw_hand(ctx, centre, (s_hour % 12) * 30.0 + s_minute * 0.5, radius * 0.72, width + 2, colour);
+  draw_hand(ctx, centre, s_minute * 6.0, radius * 1.2, width, colour);
+  graphics_context_set_fill_color(ctx, colour);
+  graphics_fill_circle(ctx, centre, width);
+  graphics_context_set_fill_color(ctx, bg_color());
+  graphics_fill_circle(ctx, centre, 1);
+}
+
+// Twelve hour marks just inside the constellation band: dots on a circle, or
+// ticks on the screen's own outline, each where its hour's angle meets it.
+static void draw_hour_marks(GContext *ctx, GPoint centre, double a, double b) {
+  graphics_context_set_fill_color(ctx, GColorWhite);
+  graphics_context_set_stroke_color(ctx, GColorWhite);
+  for (int h = 0; h < 12; h++) {
+    double rad = h * 0.5235987755982988, sin = astro_sin(rad), cos = astro_cos(rad);
+    bool quarter = h % 3 == 0;
+    if (!s_prefs.hour_ticks) {
+      double r = a < b ? a : b;
+      graphics_fill_circle(ctx, GPoint(centre.x + round_px(r * sin), centre.y - round_px(r * cos)), quarter ? 2 : 1);
+      continue;
+    }
+#if defined(PBL_ROUND)
+    double out = a;
+#else
+    double across = astro_abs(sin) > 0.001 ? a / astro_abs(sin) : 1e9;
+    double down = astro_abs(cos) > 0.001 ? b / astro_abs(cos) : 1e9;
+    double out = across < down ? across : down;
+#endif
+    double in = out - (quarter ? 9 : 5);
+    graphics_context_set_stroke_width(ctx, quarter ? 3 : 2);
+    graphics_draw_line(ctx, GPoint(centre.x + round_px(out * sin), centre.y - round_px(out * cos)),
+                       GPoint(centre.x + round_px(in * sin), centre.y - round_px(in * cos)));
+  }
+}
+
+#if defined(PBL_COLOR)
+// Where a hand crosses the date, the date shows through it in grey. Pebble
+// cannot clip drawing to a shape, so this works on the pixels of the date's
+// strip: note the lettering, note which of it the hands then cover, and grey
+// those pixels once the hands are drawn.
+enum { STRIP_LETTERS, STRIP_COVERED, STRIP_PAINT };
+static uint8_t s_strip[PBL_DISPLAY_WIDTH * (DATE_CAP_H + 2)];
+
+static void scan_strip(GContext *ctx, int top, int step, GColor colour) {
+  GBitmap *fb = graphics_capture_frame_buffer(ctx);
+  if (!fb) return;
+  for (int y = 0; y < DATE_CAP_H + 2; y++) {
+    if (top + y < 0 || top + y >= PBL_DISPLAY_HEIGHT) continue;
+    GBitmapDataRowInfo row = gbitmap_get_data_row_info(fb, top + y);
+    for (int x = row.min_x; x <= row.max_x; x++) {
+      uint8_t *flag = &s_strip[y * PBL_DISPLAY_WIDTH + x];
+      if (step == STRIP_LETTERS) *flag = row.data[x] == GColorWhite.argb;
+      else if (step == STRIP_COVERED) *flag = *flag && row.data[x] == colour.argb;
+      else if (*flag) row.data[x] = colour.argb;
+    }
+  }
+  graphics_release_frame_buffer(ctx, fb);
+}
+#endif
+
+// The analogue face: the date above the centre, the readouts below it, the
+// hour marks just inside the constellation band, and the hands on top.
 static void draw_analogue(GContext *ctx, GPoint centre, double hw, double hh) {
-  double inner = (hw - PANEL_X < hh - PANEL_Y ? hw - PANEL_X : hh - PANEL_Y) - BAND_INSET - BAND_SPREAD;
-  double radius = inner - 3;
+  double a = hw - PANEL_X - BAND_INSET - BAND_SPREAD, b = hh - PANEL_Y - BAND_INSET - BAND_SPREAD;
+  double radius = (a < b ? a : b) - 3;
 
   graphics_context_set_text_color(ctx, GColorWhite);
-  int date_cap_top = centre.y - round_px(radius * 0.62);
+  int date_cap_top = centre.y - round_px(radius * ANALOGUE_DATE_AT);
   graphics_draw_text(ctx, s_date_text, s_font_date,
                      GRect(0, date_cap_top - DATE_TEXT_TOP, (int)(hw * 2), 40),
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
   s_readout_top = centre.y + round_px(radius * 0.36);
   draw_readouts(ctx, centre.x);
+  draw_hour_marks(ctx, centre, a, b);
 
-  graphics_context_set_fill_color(ctx, GColorWhite);
-  for (int h = 0; h < 12; h++) {
-    double rad = h * 0.5235987755982988;
-    GPoint dot = GPoint(centre.x + round_px(inner * astro_sin(rad)), centre.y - round_px(inner * astro_cos(rad)));
-    graphics_fill_circle(ctx, dot, h % 3 == 0 ? 2 : 1);
-  }
-
-  int width = PBL_DISPLAY_WIDTH >= 200 ? 5 : 4;
-  draw_hand(ctx, centre, (s_hour % 12) * 30.0 + s_minute * 0.5, radius * 0.6, width + 2, GColorWhite);
-  draw_hand(ctx, centre, s_minute * 6.0, radius, width, GColorWhite);
-  graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_circle(ctx, centre, width);
-  graphics_context_set_fill_color(ctx, GColorBlack);
-  graphics_fill_circle(ctx, centre, 1);
+#if defined(PBL_COLOR)
+  const GColor marker = GColorBlue;  // any colour but white: only the hands are drawn in it
+  int strip_top = date_cap_top - 1;
+  scan_strip(ctx, strip_top, STRIP_LETTERS, marker);
+  draw_hands(ctx, centre, radius, marker);
+  scan_strip(ctx, strip_top, STRIP_COVERED, marker);
+  draw_hands(ctx, centre, radius, accent_color());
+  scan_strip(ctx, strip_top, STRIP_PAINT, GColorDarkGray);
+#else
+  draw_hands(ctx, centre, radius, accent_color());
+#endif
 }
 
 static void canvas_update(Layer *layer, GContext *ctx) {
@@ -848,13 +927,13 @@ static void canvas_update(Layer *layer, GContext *ctx) {
   double hw = bounds.size.w / 2.0, hh = bounds.size.h / 2.0;
   GPoint centre = GPoint(bounds.size.w / 2, bounds.size.h / 2);
 
-  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_context_set_fill_color(ctx, bg_color());
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
   draw_ring(ctx, centre, hw, hh);
 
   // Cuts the tabs' inner ends to the panel's rounded outline.
-  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_context_set_fill_color(ctx, bg_color());
 #if defined(PBL_ROUND)
   graphics_fill_circle(ctx, centre, (uint16_t)(hw - PANEL_X));
 #else
@@ -877,6 +956,7 @@ static void canvas_update(Layer *layer, GContext *ctx) {
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
   // Drawn again shifted by up to TIME_BOLD px each way, which thickens every
   // stroke with square corners.
+  graphics_context_set_text_color(ctx, accent_color());
   for (int dy = 0; dy <= TIME_BOLD; dy++) {
     for (int dx = 0; dx <= TIME_BOLD; dx++) {
       graphics_draw_text(ctx, s_time_text, s_font_time,
@@ -981,6 +1061,12 @@ static bool read_prefs(DictionaryIterator *iter) {
   Tuple *hours = dict_find(iter, MESSAGE_KEY_ROLL_HOURS);
   Tuple *style = dict_find(iter, MESSAGE_KEY_CLOCK_STYLE);
   if (style) { s_prefs.analogue = tuple_int(style) == 1; changed = true; }
+  Tuple *marks = dict_find(iter, MESSAGE_KEY_HOUR_TICKS);
+  if (marks) { s_prefs.hour_ticks = tuple_int(marks) == 1; changed = true; }
+  Tuple *bg = dict_find(iter, MESSAGE_KEY_BG_COLOR);
+  if (bg) { s_prefs.bg = GColorFromHEX(tuple_int(bg)).argb; changed = true; }
+  Tuple *accent = dict_find(iter, MESSAGE_KEY_ACCENT_COLOR);
+  if (accent) { s_prefs.accent = GColorFromHEX(tuple_int(accent)).argb; changed = true; }
   Tuple *tenths = dict_find(iter, MESSAGE_KEY_ROLL_TIME);
   if (tenths && tuple_int(tenths) >= MIN_ROLL_TENTHS && tuple_int(tenths) <= MAX_ROLL_TENTHS) {
     s_prefs.roll_tenths = (uint8_t)tuple_int(tenths);

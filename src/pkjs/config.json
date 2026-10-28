@@ -19,6 +19,32 @@
           { "label": "Digits", "value": "0" },
           { "label": "Hands", "value": "1" }
         ]
+      },
+      {
+        "type": "radiogroup",
+        "messageKey": "HOUR_TICKS",
+        "label": "Hour marks (with hands)",
+        "defaultValue": "0",
+        "options": [
+          { "label": "Dots", "value": "0" },
+          { "label": "Ticks", "value": "1" }
+        ]
+      },
+      {
+        "type": "color",
+        "messageKey": "BG_COLOR",
+        "label": "Background",
+        "defaultValue": "000000",
+        "sunlight": true,
+        "capabilities": ["COLOR"]
+      },
+      {
+        "type": "color",
+        "messageKey": "ACCENT_COLOR",
+        "label": "Hands and digits",
+        "defaultValue": "FFFFFF",
+        "sunlight": true,
+        "capabilities": ["COLOR"]
       }
     ]
   },
