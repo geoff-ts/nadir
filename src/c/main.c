@@ -151,9 +151,8 @@ typedef struct {
   uint8_t view;  // added in 1.1
   uint8_t roll_tenths;  // added in 1.2: the roll ahead and pause, in tenths of a second
   bool analogue;  // added in 1.3: hands instead of digits
-  bool hour_ticks;  // 1.3: tick marks rather than dots for the hours
   uint8_t bg;  // 1.3: background colour, as GColor argb
-  uint8_t accent;  // 1.3: the hands' (or the digits') colour
+  uint8_t accent;  // 1.3: the text, hands, marks and constellations
 } Prefs;
 
 typedef struct {
@@ -351,6 +350,15 @@ static bool below_horizon(double psi) {
 // The chosen background and accent; black and white on black-and-white screens.
 static GColor bg_color(void) { return PBL_IF_COLOR_ELSE(((GColor){.argb = s_prefs.bg}), GColorBlack); }
 static GColor accent_color(void) { return PBL_IF_COLOR_ELSE(((GColor){.argb = s_prefs.accent}), GColorWhite); }
+
+#if defined(PBL_COLOR)
+// The accent dimmed to thirds of each channel, for the constellations: with a
+// white accent, 1 is dark grey (the lines) and 2 light grey (the stars).
+static GColor accent_shade(int thirds) {
+  GColor c = accent_color();
+  return (GColor){.argb = (uint8_t)(0xC0 | (c.r * thirds / 3) << 4 | (c.g * thirds / 3) << 2 | (c.b * thirds / 3))};
+}
+#endif
 
 static GColor body_color(int body) {
 #if defined(PBL_BW)
@@ -605,12 +613,12 @@ static void draw_constellations(GContext *ctx, GPoint centre, double hw, double 
     for (int i = 0; i < SKY_VERTEX_COUNT; i++) s_stars[i] = star_point(centre, hw, hh, &SKY_VERTICES[i]);
     s_stars_stale = false;
   }
-  graphics_context_set_stroke_color(ctx, GColorDarkGray);
+  graphics_context_set_stroke_color(ctx, PBL_IF_COLOR_ELSE(accent_shade(1), GColorDarkGray));
   graphics_context_set_stroke_width(ctx, 1);
   for (int i = 0; i < SKY_SEGMENT_COUNT; i++) {
     graphics_draw_line(ctx, s_stars[SKY_SEGMENTS[i].from], s_stars[SKY_SEGMENTS[i].to]);
   }
-  graphics_context_set_fill_color(ctx, GColorLightGray);
+  graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(accent_shade(2), GColorLightGray));
   for (int i = 0; i < SKY_VERTEX_COUNT; i++) {
     graphics_fill_rect(ctx, GRect(s_stars[i].x - 1, s_stars[i].y - 1, 2, 2), 0, GCornerNone);
   }
@@ -629,7 +637,7 @@ static void draw_zodiac_ticks(GContext *ctx, GPoint centre, double hw, double hh
     }
     s_ticks_stale = false;
   }
-  graphics_context_set_stroke_color(ctx, GColorWhite);
+  graphics_context_set_stroke_color(ctx, accent_color());
   graphics_context_set_stroke_width(ctx, 2);
   for (int sign = 0; sign < 12; sign++) graphics_draw_line(ctx, ends[sign][0], ends[sign][1]);
 }
@@ -653,7 +661,7 @@ static GSize small_text_size(const char *text) {
 static void draw_digits(GContext *ctx, const char *text, int x, int w) {
   graphics_context_set_fill_color(ctx, bg_color());
   graphics_fill_rect(ctx, GRect(x - 2, s_readout_top - 3, w + 4, SMALL_CAP_H + 6), 0, GCornerNone);
-  graphics_context_set_text_color(ctx, GColorWhite);
+  graphics_context_set_text_color(ctx, accent_color());
   graphics_draw_text(ctx, text, s_font_small, GRect(x, s_readout_top - SMALL_CAP_TOP, w + 4, 40),
                      GTextOverflowModeFill, GTextAlignmentLeft, NULL);
 }
@@ -842,30 +850,14 @@ static void draw_hands(GContext *ctx, GPoint centre, double radius, GColor colou
   graphics_fill_circle(ctx, centre, 1);
 }
 
-// Twelve hour marks just inside the constellation band: dots on a circle, or
-// ticks on the screen's own outline, each where its hour's angle meets it.
-static void draw_hour_marks(GContext *ctx, GPoint centre, double a, double b) {
-  graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_context_set_stroke_color(ctx, GColorWhite);
+// Twelve hour dots on a circle just inside the constellation band, bigger at
+// 12, 3, 6 and 9.
+static void draw_hour_marks(GContext *ctx, GPoint centre, double r) {
+  graphics_context_set_fill_color(ctx, accent_color());
   for (int h = 0; h < 12; h++) {
-    double rad = h * 0.5235987755982988, sin = astro_sin(rad), cos = astro_cos(rad);
-    bool quarter = h % 3 == 0;
-    if (!s_prefs.hour_ticks) {
-      double r = a < b ? a : b;
-      graphics_fill_circle(ctx, GPoint(centre.x + round_px(r * sin), centre.y - round_px(r * cos)), quarter ? 2 : 1);
-      continue;
-    }
-#if defined(PBL_ROUND)
-    double out = a;
-#else
-    double across = astro_abs(sin) > 0.001 ? a / astro_abs(sin) : 1e9;
-    double down = astro_abs(cos) > 0.001 ? b / astro_abs(cos) : 1e9;
-    double out = across < down ? across : down;
-#endif
-    double in = out - (quarter ? 9 : 5);
-    graphics_context_set_stroke_width(ctx, quarter ? 3 : 2);
-    graphics_draw_line(ctx, GPoint(centre.x + round_px(out * sin), centre.y - round_px(out * cos)),
-                       GPoint(centre.x + round_px(in * sin), centre.y - round_px(in * cos)));
+    double rad = h * 0.5235987755982988;
+    GPoint dot = GPoint(centre.x + round_px(r * astro_sin(rad)), centre.y - round_px(r * astro_cos(rad)));
+    graphics_fill_circle(ctx, dot, h % 3 == 0 ? 2 : 1);
   }
 }
 
@@ -885,7 +877,7 @@ static void scan_strip(GContext *ctx, int top, int step, GColor colour) {
     GBitmapDataRowInfo row = gbitmap_get_data_row_info(fb, top + y);
     for (int x = row.min_x; x <= row.max_x; x++) {
       uint8_t *flag = &s_strip[y * PBL_DISPLAY_WIDTH + x];
-      if (step == STRIP_LETTERS) *flag = row.data[x] == GColorWhite.argb;
+      if (step == STRIP_LETTERS) *flag = row.data[x] == accent_color().argb;
       else if (step == STRIP_COVERED) *flag = *flag && row.data[x] == colour.argb;
       else if (*flag) row.data[x] = colour.argb;
     }
@@ -900,17 +892,18 @@ static void draw_analogue(GContext *ctx, GPoint centre, double hw, double hh) {
   double a = hw - PANEL_X - BAND_INSET - BAND_SPREAD, b = hh - PANEL_Y - BAND_INSET - BAND_SPREAD;
   double radius = (a < b ? a : b) - 3;
 
-  graphics_context_set_text_color(ctx, GColorWhite);
+  graphics_context_set_text_color(ctx, accent_color());
   int date_cap_top = centre.y - round_px(radius * ANALOGUE_DATE_AT);
   graphics_draw_text(ctx, s_date_text, s_font_date,
                      GRect(0, date_cap_top - DATE_TEXT_TOP, (int)(hw * 2), 40),
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
   s_readout_top = centre.y + round_px(radius * 0.36);
   draw_readouts(ctx, centre.x);
-  draw_hour_marks(ctx, centre, a, b);
+  draw_hour_marks(ctx, centre, a < b ? a : b);
 
 #if defined(PBL_COLOR)
-  const GColor marker = GColorBlue;  // any colour but white: only the hands are drawn in it
+  // Any colour but the accent's: only the hands are drawn in it.
+  const GColor marker = gcolor_equal(accent_color(), GColorBlue) ? GColorRed : GColorBlue;
   int strip_top = date_cap_top - 1;
   scan_strip(ctx, strip_top, STRIP_LETTERS, marker);
   draw_hands(ctx, centre, radius, marker);
@@ -950,13 +943,12 @@ static void canvas_update(Layer *layer, GContext *ctx) {
     return;
   }
   s_readout_top = READOUT_DIGIT_TOP;
-  graphics_context_set_text_color(ctx, GColorWhite);
+  graphics_context_set_text_color(ctx, accent_color());
   graphics_draw_text(ctx, s_date_text, s_font_date,
                      GRect(0, DATE_CAP_TOP - DATE_TEXT_TOP, bounds.size.w, 40),
                      GTextOverflowModeFill, GTextAlignmentCenter, NULL);
   // Drawn again shifted by up to TIME_BOLD px each way, which thickens every
   // stroke with square corners.
-  graphics_context_set_text_color(ctx, accent_color());
   for (int dy = 0; dy <= TIME_BOLD; dy++) {
     for (int dx = 0; dx <= TIME_BOLD; dx++) {
       graphics_draw_text(ctx, s_time_text, s_font_time,
@@ -1061,8 +1053,6 @@ static bool read_prefs(DictionaryIterator *iter) {
   Tuple *hours = dict_find(iter, MESSAGE_KEY_ROLL_HOURS);
   Tuple *style = dict_find(iter, MESSAGE_KEY_CLOCK_STYLE);
   if (style) { s_prefs.analogue = tuple_int(style) == 1; changed = true; }
-  Tuple *marks = dict_find(iter, MESSAGE_KEY_HOUR_TICKS);
-  if (marks) { s_prefs.hour_ticks = tuple_int(marks) == 1; changed = true; }
   Tuple *bg = dict_find(iter, MESSAGE_KEY_BG_COLOR);
   if (bg) { s_prefs.bg = GColorFromHEX(tuple_int(bg)).argb; changed = true; }
   Tuple *accent = dict_find(iter, MESSAGE_KEY_ACCENT_COLOR);

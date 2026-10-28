@@ -21,16 +21,6 @@
         ]
       },
       {
-        "type": "radiogroup",
-        "messageKey": "HOUR_TICKS",
-        "label": "Hour marks (with hands)",
-        "defaultValue": "0",
-        "options": [
-          { "label": "Dots", "value": "0" },
-          { "label": "Ticks", "value": "1" }
-        ]
-      },
-      {
         "type": "color",
         "messageKey": "BG_COLOR",
         "label": "Background",
@@ -41,7 +31,7 @@
       {
         "type": "color",
         "messageKey": "ACCENT_COLOR",
-        "label": "Hands and digits",
+        "label": "Accent: text, hands, ticks and stars",
         "defaultValue": "FFFFFF",
         "sunlight": true,
         "capabilities": ["COLOR"]
