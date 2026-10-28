@@ -21,7 +21,7 @@
       "REQUEST", "LAT", "LON", "TLE_LINES", "TEMP", "WCODE",
       "READOUT_LEFT", "READOUT_RIGHT", "TEMP_UNIT", "ROLL_ON", "ROLL_HOURS",
       "TLE_CSS", "TLE_HST", "SAT_ISS", "SAT_CSS", "SAT_HST", "VIEW", "ROLL_TIME", "CLOCK_STYLE",
-      "BG_COLOR", "ACCENT_COLOR"
+      "BG_COLOR", "ACCENT_COLOR", "ICONS_ACCENT"
     ],
     "resources": {
       "media": [

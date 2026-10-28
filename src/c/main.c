@@ -153,6 +153,7 @@ typedef struct {
   bool analogue;  // added in 1.3: hands instead of digits
   uint8_t bg;  // 1.3: background colour, as GColor argb
   uint8_t accent;  // 1.3: the text, hands, marks and constellations
+  bool icons_accent;  // 1.3: readout icons in the accent rather than colour-coded
 } Prefs;
 
 typedef struct {
@@ -350,6 +351,9 @@ static bool below_horizon(double psi) {
 // The chosen background and accent; black and white on black-and-white screens.
 static GColor bg_color(void) { return PBL_IF_COLOR_ELSE(((GColor){.argb = s_prefs.bg}), GColorBlack); }
 static GColor accent_color(void) { return PBL_IF_COLOR_ELSE(((GColor){.argb = s_prefs.accent}), GColorWhite); }
+
+// A readout icon's colour: its own colour code, or the accent if chosen.
+static GColor icon_ink(GColor coded) { return s_prefs.icons_accent ? accent_color() : INK(coded); }
 
 #if defined(PBL_COLOR)
 // The accent dimmed to thirds of each channel, for the constellations: with a
@@ -669,7 +673,7 @@ static void draw_digits(GContext *ctx, const char *text, int x, int w) {
 // An upright cell whose right side the digits cover.
 static void draw_battery_icon(GContext *ctx, int digits_x) {
   int left = digits_x - s_readout_lead[READOUT_BATTERY], top = s_readout_top - 7;
-  graphics_context_set_fill_color(ctx, INK(s_battery <= 20 ? GColorRed
+  graphics_context_set_fill_color(ctx, icon_ink(s_battery <= 20 ? GColorRed
                                            : (s_charging ? GColorYellow : GColorGreen)));
   graphics_fill_rect(ctx, GRect(left + 3, top - 3, 6, 3), 0, GCornerNone);
   graphics_fill_rect(ctx, GRect(left, top, 12, 2), 0, GCornerNone);
@@ -690,9 +694,9 @@ static void cloud_shape(GContext *ctx, GPoint o, int grow) {
 static void draw_weather_icon(GContext *ctx, int digits_x) {
   GPoint o = GPoint(digits_x - s_readout_lead[READOUT_WEATHER] - 2, s_readout_top - 14);
   int code = (int)s_settings.weather_code;
-  GColor blue = INK(GColorVividCerulean);
+  GColor blue = icon_ink(GColorVividCerulean);
   if (code <= 1) {
-    graphics_context_set_stroke_color(ctx, INK(GColorChromeYellow));
+    graphics_context_set_stroke_color(ctx, icon_ink(GColorChromeYellow));
     graphics_context_set_stroke_width(ctx, 2);
     GPoint c = GPoint(o.x + 30, o.y + 8);
     graphics_draw_circle(ctx, c, 6);
@@ -719,11 +723,11 @@ static void draw_weather_icon(GContext *ctx, int digits_x) {
     }
   }
   if (snow) {
-    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_context_set_fill_color(ctx, icon_ink(GColorWhite));
     for (int i = 0; i < 2; i++) graphics_fill_circle(ctx, GPoint(o.x + 31 + i * 5, o.y + 25), 1);
   }
   if (code >= 95) {
-    graphics_context_set_stroke_color(ctx, INK(GColorYellow));
+    graphics_context_set_stroke_color(ctx, icon_ink(GColorYellow));
     graphics_draw_line(ctx, GPoint(o.x + 33, o.y + 17), GPoint(o.x + 29, o.y + 23));
     graphics_draw_line(ctx, GPoint(o.x + 29, o.y + 23), GPoint(o.x + 34, o.y + 23));
     graphics_draw_line(ctx, GPoint(o.x + 34, o.y + 23), GPoint(o.x + 30, o.y + 29));
@@ -746,7 +750,7 @@ static void heart_shape(GContext *ctx, GPoint o, int grow) {
 // lobe shows above them.
 static void draw_heart_icon(GContext *ctx, int digits_x) {
   GPoint o = GPoint(digits_x - s_readout_lead[READOUT_HEART] - 2, s_readout_top - 15);
-  graphics_context_set_fill_color(ctx, INK(GColorFolly));
+  graphics_context_set_fill_color(ctx, icon_ink(GColorFolly));
   heart_shape(ctx, o, 0);
   graphics_context_set_fill_color(ctx, bg_color());
   heart_shape(ctx, o, -2);
@@ -755,7 +759,7 @@ static void draw_heart_icon(GContext *ctx, int digits_x) {
 // Two footprints, one a step ahead of the other, left of the digits.
 static void draw_steps_icon(GContext *ctx, int digits_x) {
   int left = digits_x - s_readout_lead[READOUT_STEPS], top = s_readout_top;
-  graphics_context_set_fill_color(ctx, INK(GColorOrange));
+  graphics_context_set_fill_color(ctx, icon_ink(GColorOrange));
   graphics_fill_rect(ctx, GRect(left, top - 2, 5, 9), 2, GCornersAll);
   graphics_fill_rect(ctx, GRect(left, top + 9, 5, 4), 1, GCornersAll);
   graphics_fill_rect(ctx, GRect(left + 6, top - 9, 5, 9), 2, GCornersAll);
@@ -1055,6 +1059,8 @@ static bool read_prefs(DictionaryIterator *iter) {
   if (style) { s_prefs.analogue = tuple_int(style) == 1; changed = true; }
   Tuple *bg = dict_find(iter, MESSAGE_KEY_BG_COLOR);
   if (bg) { s_prefs.bg = GColorFromHEX(tuple_int(bg)).argb; changed = true; }
+  Tuple *icons = dict_find(iter, MESSAGE_KEY_ICONS_ACCENT);
+  if (icons) { s_prefs.icons_accent = tuple_int(icons) != 0; changed = true; }
   Tuple *accent = dict_find(iter, MESSAGE_KEY_ACCENT_COLOR);
   if (accent) { s_prefs.accent = GColorFromHEX(tuple_int(accent)).argb; changed = true; }
   Tuple *tenths = dict_find(iter, MESSAGE_KEY_ROLL_TIME);

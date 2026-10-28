@@ -35,6 +35,17 @@
         "defaultValue": "FFFFFF",
         "sunlight": true,
         "capabilities": ["COLOR"]
+      },
+      {
+        "type": "radiogroup",
+        "messageKey": "ICONS_ACCENT",
+        "label": "Readout icons",
+        "defaultValue": "0",
+        "capabilities": ["COLOR"],
+        "options": [
+          { "label": "Colour-coded (green battery, blue cloud, red heart...)", "value": "0" },
+          { "label": "Accent colour", "value": "1" }
+        ]
       }
     ]
   },
