@@ -57,6 +57,30 @@
     "items": [
       {
         "type": "heading",
+        "defaultValue": "Sky view"
+      },
+      {
+        "type": "text",
+        "defaultValue": "From the northern hemisphere you face south to see the planets, with east on your left. From the southern hemisphere you face north, so the face is mirrored: east on the right. Automatic follows your location, and only switches once you are out of the tropics."
+      },
+      {
+        "type": "radiogroup",
+        "messageKey": "VIEW",
+        "label": "Facing",
+        "defaultValue": "0",
+        "options": [
+          { "label": "Automatic", "value": "0" },
+          { "label": "South (northern hemisphere)", "value": "1" },
+          { "label": "North (southern hemisphere)", "value": "2" }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
         "defaultValue": "Satellites"
       },
       {

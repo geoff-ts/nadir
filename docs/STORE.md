@@ -55,7 +55,9 @@ captures with `pebble screenshot --emulator emery` if the face changes.
 > sky.
 >
 > The ring is the ecliptic, turned so the top of the screen is overhead and
-> the middle of each side is the horizon: east on the left, west on the right.
+> the middle of each side is the horizon. It faces south in the northern
+> hemisphere and mirrors to face north in the southern, switching
+> automatically once you leave the tropics, or set it yourself.
 > Bodies that are up get a solid tab; bodies below the horizon get an outline.
 > The zodiac constellations turn with them through the day. The Moon shows
 > tonight's phase.
@@ -78,6 +80,11 @@ captures with `pebble screenshot --emulator emery` if the face changes.
 > Open source: https://github.com/geoff-ts/nadir
 
 **Release notes for 1.0.0:** First release.
+
+**Release notes for 1.1.0:** In the southern hemisphere the face now mirrors
+to show the sky facing north, with east on the right. It switches
+automatically once you leave the tropics, or choose a view in settings. The
+sky slides back after a roll instead of jumping.
 
 ## Later releases
 

@@ -4,7 +4,9 @@
 // of the ecliptic that is rising sits at the middle of the left edge and the
 // one that is setting at the middle of the right edge: the upper half of the
 // screen is the part of the ecliptic above your horizon, the lower half the
-// part below it, and the zenith is at the top. East is left, west is right.
+// part below it, and the zenith is at the top. East is left, west is right, as
+// you see the sky facing south from the northern hemisphere. Facing north from
+// the southern hemisphere the whole face is mirrored: east is right.
 // The inner band carries the zodiac constellations on the same mapping, so
 // everything turns together over the day. Satellites (the ISS, Tiangong and
 // Hubble) are not on the ecliptic, so they are placed by their elevation and by
@@ -18,6 +20,7 @@
 #define DEFAULT_LON 151.2093
 #define TLE_MAX_AGE_DAYS 14.0
 #define REQUEST_EVERY_MINUTES 30
+#define TROPIC_DEG 23.44  // the automatic view only changes once you are out of the tropics
 #define PASS_UPDATE_MS 3000
 #define PASS_MIN_EL_DEG 10.0
 #define DEFAULT_ROLL_HOURS 4
@@ -56,6 +59,7 @@ enum {
   PERSIST_PREFS,
   PERSIST_TLE_CSS,
   PERSIST_TLE_HST,
+  PERSIST_AUTO_SOUTH,
 };
 
 // Satellites, each placed like the ISS. PERSIST_TLE holds the ISS's elements.
@@ -80,6 +84,13 @@ enum {
 };
 #define READOUT_SLOTS 2
 
+// Which way the face looks at the sky; the numbers are the settings page's values.
+enum {
+  VIEW_AUTO,
+  VIEW_NORTH,  // facing south, as from the northern hemisphere
+  VIEW_SOUTH,  // facing north, as from the southern hemisphere: mirrored
+};
+
 // Chosen on the phone's settings page.
 typedef struct {
   uint8_t readout[READOUT_SLOTS];
@@ -87,6 +98,7 @@ typedef struct {
   bool roll;
   uint8_t roll_hours;
   bool sat[SAT_COUNT];  // added after the first release: older saves stop short of it
+  uint8_t view;  // added in 1.1
 } Prefs;
 
 typedef struct {
@@ -131,6 +143,7 @@ static AppTimer *s_pass_timer;
 static GPoint s_stars[SKY_VERTEX_COUNT];  // where each star is drawn, worked out once per sky update
 static bool s_stars_stale = true;
 static bool s_ticks_stale = true;  // the same for the zodiac ticks
+static bool s_auto_south = true;  // the automatic view's choice, kept through the tropics
 
 // ---------------------------------------------------------------- geometry
 
@@ -198,6 +211,26 @@ static void fill_tab(GContext *ctx, GPoint centre, double outer_a, double outer_
 
 // ------------------------------------------------------------------- sky
 
+// The automatic view follows the hemisphere, but only changes once you are
+// clear of the tropics, so living or travelling near the equator does not
+// flip the face back and forth.
+static void update_auto_view(void) {
+  bool south = s_auto_south;
+  if (!persist_exists(PERSIST_AUTO_SOUTH)) south = s_settings.lat < 0;
+  if (s_settings.lat > TROPIC_DEG) south = false;
+  if (s_settings.lat < -TROPIC_DEG) south = true;
+  if (south != s_auto_south || !persist_exists(PERSIST_AUTO_SOUTH)) {
+    s_auto_south = south;
+    persist_write_bool(PERSIST_AUTO_SOUTH, south);
+  }
+}
+
+// 1 facing south (east on the left), -1 facing north (mirrored, east on the right).
+static double view_sign(void) {
+  bool south = s_prefs.view == VIEW_SOUTH || (s_prefs.view == VIEW_AUTO && s_auto_south);
+  return south ? -1.0 : 1.0;
+}
+
 static void update_sats(time_t when) {
   double jd = astro_jd(when);
   for (int sat = 0; sat < SAT_COUNT; sat++) {
@@ -207,7 +240,7 @@ static void update_sats(time_t when) {
     if (!s_sky.sat_known[sat]) continue;
     double el, az;
     astro_sat_altaz(&s_settings.tle[sat], jd, s_settings.lat, s_settings.lon, &el, &az);
-    s_sky.sat_psi[sat] = (az < 180.0 ? -1.0 : 1.0) * (90.0 - el);
+    s_sky.sat_psi[sat] = view_sign() * (az < 180.0 ? -1.0 : 1.0) * (90.0 - el);
     s_sky.sat_high[sat] = el > PASS_MIN_EL_DEG;
   }
 }
@@ -219,7 +252,7 @@ static void update_sky(time_t when) {
   double lst = astro_lst_deg(jd, s_settings.lon);
   s_sky.asc_deg = astro_ascendant_deg(jd, lst, s_settings.lat);
   s_sky.precession_deg = astro_precession_deg(jd);
-  for (int i = 0; i < BODY_COUNT; i++) s_sky.psi[i] = s_sky.asc_deg - lon[i] - 90.0;
+  for (int i = 0; i < BODY_COUNT; i++) s_sky.psi[i] = view_sign() * (s_sky.asc_deg - lon[i] - 90.0);
   s_sky.moon_elongation_deg = wrap_deg(lon[BODY_MOON] - lon[BODY_SUN]);
   s_stars_stale = s_ticks_stale = true;
   update_sats(when);
@@ -289,14 +322,14 @@ static void draw_sun_glyph(GContext *ctx, GPoint c, GColor ink) {
 }
 
 // The Moon as a small disc, lit as it is tonight. A waxing Moon is lit on its
-// right in the north and on its left in the south, so the lit side flips with
-// the sign of the latitude.
+// west side: the right facing south, the left facing north, so the lit side
+// flips with the view.
 static void draw_moon_glyph(GContext *ctx, GPoint c, GColor ink) {
   const int radius = 7;
   double elongation = s_sky.moon_elongation_deg;
   double terminator = astro_cos(elongation * 0.017453292519943295);
   bool waxing = elongation <= 180.0;
-  int flip = s_settings.lat < 0 ? -1 : 1;
+  int flip = (int)view_sign();
 
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_circle(ctx, c, radius);
@@ -468,8 +501,10 @@ static GPoint band_point(GPoint centre, double a, double b, double r, double psi
 
 static GPoint star_point(GPoint centre, double hw, double hh, const SkyVertex *v) {
   double lon = v->lon / 100.0 + s_sky.precession_deg;
-  double psi = s_sky.asc_deg - lon - 90.0;
-  double offset = v->lat / 100.0 * BAND_SCALE;
+  // Mirroring also turns the band inside out: facing north, stars north of the
+  // ecliptic sit nearer the horizon, so each constellation is upside down.
+  double psi = view_sign() * (s_sky.asc_deg - lon - 90.0);
+  double offset = view_sign() * v->lat / 100.0 * BAND_SCALE;
   if (offset > BAND_SPREAD) offset = BAND_SPREAD;
   if (offset < -BAND_SPREAD) offset = -BAND_SPREAD;
   return band_point(centre, hw - PANEL_X - BAND_INSET, hh - PANEL_Y - BAND_INSET, BAND_RADIUS, psi, offset);
@@ -498,7 +533,7 @@ static void draw_zodiac_ticks(GContext *ctx, GPoint centre, double hw, double hh
   if (s_ticks_stale) {
     double a = hw - PANEL_X - BAND_INSET, b = hh - PANEL_Y - BAND_INSET;
     for (int sign = 0; sign < 12; sign++) {
-      double psi = s_sky.asc_deg - sign * 30.0 - 90.0;
+      double psi = view_sign() * (s_sky.asc_deg - sign * 30.0 - 90.0);
       ends[sign][0] = band_point(centre, a, b, BAND_RADIUS, psi, TICK_FROM);
       ends[sign][1] = band_point(centre, a, b, BAND_RADIUS, psi, TICK_TO);
     }
@@ -821,6 +856,11 @@ static bool read_prefs(DictionaryIterator *iter) {
     if (shown) { s_prefs.sat[sat] = tuple_int(shown) != 0; changed = true; }
   }
   Tuple *hours = dict_find(iter, MESSAGE_KEY_ROLL_HOURS);
+  Tuple *view = dict_find(iter, MESSAGE_KEY_VIEW);
+  if (view && tuple_int(view) >= VIEW_AUTO && tuple_int(view) <= VIEW_SOUTH) {
+    s_prefs.view = (uint8_t)tuple_int(view);
+    changed = true;
+  }
   if (hours && tuple_int(hours) >= 1 && tuple_int(hours) <= 24) {
     s_prefs.roll_hours = (uint8_t)tuple_int(hours);
     changed = true;
@@ -838,6 +878,7 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
     s_settings.lon = lon->value->int32 / 10000.0;
     persist_write_int(PERSIST_LAT, lat->value->int32);
     persist_write_int(PERSIST_LON, lon->value->int32);
+    update_auto_view();
   }
   const uint32_t tle_keys[SAT_COUNT] = {MESSAGE_KEY_TLE_LINES, MESSAGE_KEY_TLE_CSS, MESSAGE_KEY_TLE_HST};
   for (int sat = 0; sat < SAT_COUNT; sat++) {
@@ -962,6 +1003,8 @@ static void load_settings(void) {
     s_settings.lat = persist_read_int(PERSIST_LAT) / 10000.0;
     s_settings.lon = persist_read_int(PERSIST_LON) / 10000.0;
   }
+  if (persist_exists(PERSIST_AUTO_SOUTH)) s_auto_south = persist_read_bool(PERSIST_AUTO_SOUTH);
+  update_auto_view();
   for (int sat = 0; sat < SAT_COUNT; sat++) {
     char buffer[160];
     if (persist_exists(s_tle_persist[sat]) &&

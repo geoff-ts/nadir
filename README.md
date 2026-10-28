@@ -19,15 +19,21 @@ runs on the watch, so it keeps working with the phone away.
   loop with a coloured tab for each body. It is turned so the part of the
   ecliptic that is rising sits at the middle of the left edge and the part
   that is setting at the middle of the right edge. The top half of the screen
-  is above your horizon and the bottom half below it; zenith is the top. East
-  is left and west is right, as if you were facing south.
+  is above your horizon and the bottom half below it; zenith is the top.
+- **Which way you face.** From the northern hemisphere you see the planets
+  facing south, with east on the left and west on the right. From the
+  southern hemisphere you face north, so the whole face is mirrored: east is
+  on the right and the constellations are upside down, as they look there.
+  The automatic setting follows your location but only changes once you are
+  out of the tropics (23.4 degrees from the equator), so travelling near the
+  equator does not flip it back and forth. You can also fix it either way.
 - **Solid tabs are up.** A body below the horizon keeps only the two sides of
   its tab, with its symbol in its colour.
 - **Inner band** carries the twelve zodiac constellations on the same
   mapping, so the whole picture turns once a day. White ticks mark every 30
   degrees of longitude, where one sign hands over to the next.
-- **The Moon's tab** is a small disc lit as the Moon is tonight; the lit side
-  flips in the southern hemisphere, as it does in the sky.
+- **The Moon's tab** is a small disc lit as the Moon is tonight, lit on its
+  west side, so it flips with the view as it does in the sky.
 - **Satellites** (the ISS in cyan, Tiangong in blue, Hubble in grey) are not
   on the ecliptic, so they are placed by elevation: straight up is the top of
   the ring, the horizon is the middle of either side, and each sits left or
@@ -44,6 +50,8 @@ runs on the watch, so it keeps working with the phone away.
 
 The gear beside Nadir in the Pebble phone app opens its settings:
 
+- which way the face looks: automatic, facing south (northern hemisphere) or
+  facing north (southern hemisphere)
 - what each readout shows, and Celsius or Fahrenheit
 - which satellites to show: the ISS (on by default), Tiangong and Hubble
   (off by default; Hubble is only seen from within about 30 degrees of the
