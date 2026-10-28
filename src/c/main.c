@@ -140,6 +140,7 @@ typedef struct {
   bool sat[SAT_COUNT];  // added after the first release: older saves stop short of it
   uint8_t view;  // added in 1.1
   uint8_t roll_tenths;  // added in 1.2: the roll ahead and pause, in tenths of a second
+  bool analogue;  // added in 1.3: hands instead of digits
 } Prefs;
 
 typedef struct {
@@ -174,6 +175,8 @@ static GFont s_font_time;
 static GFont s_font_small;
 static GFont s_font_date;
 static GFont s_font_glyph;
+static int s_hour, s_minute;
+static int s_readout_top = READOUT_DIGIT_TOP;  // where the readouts' digits start; the analogue face moves them
 static char s_time_text[8];
 static char s_date_text[16];
 static int s_battery = 100;
@@ -312,6 +315,8 @@ static void update_sky(time_t when) {
 
 static void update_clock(time_t now) {
   struct tm *local = localtime(&now);
+  s_hour = local->tm_hour;
+  s_minute = local->tm_min;
   strftime(s_time_text, sizeof(s_time_text), clock_is_24h_style() ? "%H:%M" : "%I:%M", local);
   static const char *const days[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
   static const char *const months[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
@@ -450,9 +455,14 @@ static void draw_glyph(GContext *ctx, GPoint c, int body, GColor ink) {
 static double tab_psi(int id) { return id < BODY_COUNT ? s_sky.psi[id] : s_sky.sat_psi[id - BODY_COUNT]; }
 
 static GColor tab_color(int id) {
+  if (id < BODY_COUNT) return body_color(id);
+#if defined(PBL_COLOR)
   static const uint8_t sat_colours[SAT_COUNT] = {GColorCyanARGB8, GColorPictonBlueARGB8,
                                                  GColorLightGrayARGB8};
-  return id < BODY_COUNT ? body_color(id) : INK(((GColor){.argb = sat_colours[id - BODY_COUNT]}));
+  return (GColor){.argb = sat_colours[id - BODY_COUNT]};
+#else
+  return GColorWhite;
+#endif
 }
 
 static bool tab_below(int id) { return below_horizon(tab_psi(id)); }
@@ -624,15 +634,15 @@ static GSize small_text_size(const char *text) {
 
 static void draw_digits(GContext *ctx, const char *text, int x, int w) {
   graphics_context_set_fill_color(ctx, GColorBlack);
-  graphics_fill_rect(ctx, GRect(x - 2, READOUT_DIGIT_TOP - 3, w + 4, SMALL_CAP_H + 6), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(x - 2, s_readout_top - 3, w + 4, SMALL_CAP_H + 6), 0, GCornerNone);
   graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx, text, s_font_small, GRect(x, READOUT_DIGIT_TOP - SMALL_CAP_TOP, w + 4, 40),
+  graphics_draw_text(ctx, text, s_font_small, GRect(x, s_readout_top - SMALL_CAP_TOP, w + 4, 40),
                      GTextOverflowModeFill, GTextAlignmentLeft, NULL);
 }
 
 // An upright cell whose right side the digits cover.
 static void draw_battery_icon(GContext *ctx, int digits_x) {
-  int left = digits_x - s_readout_lead[READOUT_BATTERY], top = READOUT_DIGIT_TOP - 7;
+  int left = digits_x - s_readout_lead[READOUT_BATTERY], top = s_readout_top - 7;
   graphics_context_set_fill_color(ctx, INK(s_battery <= 20 ? GColorRed
                                            : (s_charging ? GColorYellow : GColorGreen)));
   graphics_fill_rect(ctx, GRect(left + 3, top - 3, 6, 3), 0, GCornerNone);
@@ -652,7 +662,7 @@ static void cloud_shape(GContext *ctx, GPoint o, int grow) {
 // The cloud's visible left edge is 2 px right of o, the digits 9 px further
 // in and 14 px below its top, under the left bumps.
 static void draw_weather_icon(GContext *ctx, int digits_x) {
-  GPoint o = GPoint(digits_x - s_readout_lead[READOUT_WEATHER] - 2, READOUT_DIGIT_TOP - 14);
+  GPoint o = GPoint(digits_x - s_readout_lead[READOUT_WEATHER] - 2, s_readout_top - 14);
   int code = (int)s_settings.weather_code;
   GColor blue = INK(GColorVividCerulean);
   if (code <= 1) {
@@ -709,7 +719,7 @@ static void heart_shape(GContext *ctx, GPoint o, int grow) {
 // A heart outline whose left half shows beside the digits and whose right
 // lobe shows above them.
 static void draw_heart_icon(GContext *ctx, int digits_x) {
-  GPoint o = GPoint(digits_x - s_readout_lead[READOUT_HEART] - 2, READOUT_DIGIT_TOP - 15);
+  GPoint o = GPoint(digits_x - s_readout_lead[READOUT_HEART] - 2, s_readout_top - 15);
   graphics_context_set_fill_color(ctx, INK(GColorFolly));
   heart_shape(ctx, o, 0);
   graphics_context_set_fill_color(ctx, GColorBlack);
@@ -718,7 +728,7 @@ static void draw_heart_icon(GContext *ctx, int digits_x) {
 
 // Two footprints, one a step ahead of the other, left of the digits.
 static void draw_steps_icon(GContext *ctx, int digits_x) {
-  int left = digits_x - s_readout_lead[READOUT_STEPS], top = READOUT_DIGIT_TOP;
+  int left = digits_x - s_readout_lead[READOUT_STEPS], top = s_readout_top;
   graphics_context_set_fill_color(ctx, INK(GColorOrange));
   graphics_fill_rect(ctx, GRect(left, top - 2, 5, 9), 2, GCornersAll);
   graphics_fill_rect(ctx, GRect(left, top + 9, 5, 4), 1, GCornersAll);
@@ -791,6 +801,48 @@ static void draw_readouts(GContext *ctx, int cx) {
   }
 }
 
+// A hand from the centre, outlined in black so it reads over the stars and text.
+static void draw_hand(GContext *ctx, GPoint centre, double deg, double length, int width, GColor colour) {
+  double rad = deg * 0.017453292519943295;
+  GPoint tip = GPoint(centre.x + round_px(length * astro_sin(rad)), centre.y - round_px(length * astro_cos(rad)));
+  graphics_context_set_stroke_color(ctx, GColorBlack);
+  graphics_context_set_stroke_width(ctx, width + 4);
+  graphics_draw_line(ctx, centre, tip);
+  graphics_context_set_stroke_color(ctx, colour);
+  graphics_context_set_stroke_width(ctx, width);
+  graphics_draw_line(ctx, centre, tip);
+}
+
+// The analogue face: the date above the centre, the readouts below it, twelve
+// hour dots just inside the constellation band, and the hands on top.
+static void draw_analogue(GContext *ctx, GPoint centre, double hw, double hh) {
+  double inner = (hw - PANEL_X < hh - PANEL_Y ? hw - PANEL_X : hh - PANEL_Y) - BAND_INSET - BAND_SPREAD;
+  double radius = inner - 3;
+
+  graphics_context_set_text_color(ctx, GColorWhite);
+  int date_cap_top = centre.y - round_px(radius * 0.62);
+  graphics_draw_text(ctx, s_date_text, s_font_date,
+                     GRect(0, date_cap_top - DATE_TEXT_TOP, (int)(hw * 2), 40),
+                     GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+  s_readout_top = centre.y + round_px(radius * 0.36);
+  draw_readouts(ctx, centre.x);
+
+  graphics_context_set_fill_color(ctx, GColorWhite);
+  for (int h = 0; h < 12; h++) {
+    double rad = h * 0.5235987755982988;
+    GPoint dot = GPoint(centre.x + round_px(inner * astro_sin(rad)), centre.y - round_px(inner * astro_cos(rad)));
+    graphics_fill_circle(ctx, dot, h % 3 == 0 ? 2 : 1);
+  }
+
+  int width = PBL_DISPLAY_WIDTH >= 200 ? 5 : 4;
+  draw_hand(ctx, centre, (s_hour % 12) * 30.0 + s_minute * 0.5, radius * 0.6, width + 2, GColorWhite);
+  draw_hand(ctx, centre, s_minute * 6.0, radius, width, GColorWhite);
+  graphics_context_set_fill_color(ctx, GColorWhite);
+  graphics_fill_circle(ctx, centre, width);
+  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_fill_circle(ctx, centre, 1);
+}
+
 static void canvas_update(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   double hw = bounds.size.w / 2.0, hh = bounds.size.h / 2.0;
@@ -814,6 +866,11 @@ static void canvas_update(Layer *layer, GContext *ctx) {
   draw_constellations(ctx, centre, hw, hh);
   draw_zodiac_ticks(ctx, centre, hw, hh);
 
+  if (s_prefs.analogue) {
+    draw_analogue(ctx, centre, hw, hh);
+    return;
+  }
+  s_readout_top = READOUT_DIGIT_TOP;
   graphics_context_set_text_color(ctx, GColorWhite);
   graphics_draw_text(ctx, s_date_text, s_font_date,
                      GRect(0, DATE_CAP_TOP - DATE_TEXT_TOP, bounds.size.w, 40),
@@ -922,6 +979,8 @@ static bool read_prefs(DictionaryIterator *iter) {
     if (shown) { s_prefs.sat[sat] = tuple_int(shown) != 0; changed = true; }
   }
   Tuple *hours = dict_find(iter, MESSAGE_KEY_ROLL_HOURS);
+  Tuple *style = dict_find(iter, MESSAGE_KEY_CLOCK_STYLE);
+  if (style) { s_prefs.analogue = tuple_int(style) == 1; changed = true; }
   Tuple *tenths = dict_find(iter, MESSAGE_KEY_ROLL_TIME);
   if (tenths && tuple_int(tenths) >= MIN_ROLL_TENTHS && tuple_int(tenths) <= MAX_ROLL_TENTHS) {
     s_prefs.roll_tenths = (uint8_t)tuple_int(tenths);

@@ -8,6 +8,25 @@
     "items": [
       {
         "type": "heading",
+        "defaultValue": "Clock"
+      },
+      {
+        "type": "radiogroup",
+        "messageKey": "CLOCK_STYLE",
+        "label": "Time shown as",
+        "defaultValue": "0",
+        "options": [
+          { "label": "Digits", "value": "0" },
+          { "label": "Hands", "value": "1" }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
         "defaultValue": "Readouts"
       },
       {
