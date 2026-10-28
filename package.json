@@ -5,14 +5,14 @@
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {
-    "pebble-clay": "^1.0.4"
+    "@rebble/clay": "^1.1.0"
   },
   "pebble": {
     "displayName": "Nadir",
     "uuid": "16183a4f-c48d-4702-8a48-1211031a8115",
     "sdkVersion": "3",
     "enableMultiJS": true,
-    "targetPlatforms": ["emery"],
+    "targetPlatforms": ["basalt", "chalk", "diorite", "emery", "flint", "gabbro"],
     "watchapp": {
       "watchface": true
     },
@@ -28,7 +28,15 @@
           "type": "font",
           "name": "FONT_NADIR_CLOCK_54",
           "file": "fonts/NadirClock-Regular.ttf",
-          "characterRegex": "[0-9:]"
+          "characterRegex": "[0-9:]",
+          "targetPlatforms": ["emery", "gabbro"]
+        },
+        {
+          "type": "font",
+          "name": "FONT_NADIR_CLOCK_38",
+          "file": "fonts/NadirClock-Regular.ttf",
+          "characterRegex": "[0-9:]",
+          "targetPlatforms": ["basalt", "chalk", "diorite", "flint"]
         },
         {
           "type": "font",
@@ -40,7 +48,15 @@
           "type": "font",
           "name": "FONT_BRUNO_ACE_19",
           "file": "fonts/BrunoAce-Regular.ttf",
-          "characterRegex": "[A-Z0-9 ]"
+          "characterRegex": "[A-Z0-9 ]",
+          "targetPlatforms": ["emery", "gabbro"]
+        },
+        {
+          "type": "font",
+          "name": "FONT_BRUNO_ACE_14",
+          "file": "fonts/BrunoAce-Regular.ttf",
+          "characterRegex": "[A-Z0-9 ]",
+          "targetPlatforms": ["basalt", "chalk", "diorite", "flint"]
         },
         {
           "type": "font",

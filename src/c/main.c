@@ -30,9 +30,6 @@
 #define MIN_ROLL_TENTHS 5
 #define MAX_ROLL_TENTHS 50
 #define ROLL_BACK_MS 200
-#define PANEL_X 14
-#define PANEL_Y 17
-#define PANEL_RADIUS 14
 #define TAB_HALF_DEG 7.0
 #define TAB_MIN_GAP_DEG 13.0
 #define BAND_INSET 13
@@ -44,13 +41,54 @@
 #define NO_TEMP INT32_MIN
 #define SMALL_CAP_TOP 6  // FONT_BRUNO_ACE_21: from the top of the text box to the top of a digit
 #define SMALL_CAP_H 15
-#define TIME_CAP_TOP 16  // the same for FONT_NADIR_CLOCK_54
-#define DATE_TEXT_TOP 5  // the same for FONT_BRUNO_ACE_19
+#define TIME_BOLD 1
+#define PANEL_RADIUS 14  // rectangular screens only
+
+// Each screen's layout. PANEL_X and PANEL_Y are the ring's width at the sides
+// and at the top and bottom; the *_TOP rows are where the tops of the digits
+// sit. Round screens have a circular ring, so their PANEL_X and PANEL_Y match.
+#if defined(PBL_PLATFORM_EMERY)
+#define PANEL_X 14
+#define PANEL_Y 17
 #define DATE_CAP_TOP 73
 #define TIME_DIGIT_TOP 95
-#define TIME_BOLD 1
 #define READOUT_DIGIT_TOP 151
 #define READOUT_GAP 16
+#elif defined(PBL_PLATFORM_GABBRO)
+#define PANEL_X 16
+#define PANEL_Y 16
+#define DATE_CAP_TOP 89
+#define TIME_DIGIT_TOP 111
+#define READOUT_DIGIT_TOP 167
+#define READOUT_GAP 16
+#elif defined(PBL_PLATFORM_CHALK)
+#define PANEL_X 14
+#define PANEL_Y 14
+#define DATE_CAP_TOP 50
+#define TIME_DIGIT_TOP 66
+#define READOUT_DIGIT_TOP 108
+#define READOUT_GAP 10
+#else  // 144 x 168
+#define PANEL_X 14
+#define PANEL_Y 15
+#define DATE_CAP_TOP 43
+#define TIME_DIGIT_TOP 59
+#define READOUT_DIGIT_TOP 103
+#define READOUT_GAP 10
+#endif
+
+// The clock and date fonts: the larger pair on the 200-px-and-wider screens.
+#if PBL_DISPLAY_WIDTH >= 200
+#define CLOCK_FONT RESOURCE_ID_FONT_NADIR_CLOCK_54
+#define TIME_CAP_TOP 16  // from the top of the text box to the top of a digit
+#define DATE_FONT RESOURCE_ID_FONT_BRUNO_ACE_19
+#define DATE_TEXT_TOP 5
+#else
+#define CLOCK_FONT RESOURCE_ID_FONT_NADIR_CLOCK_38
+#define TIME_CAP_TOP 11
+#define DATE_FONT RESOURCE_ID_FONT_BRUNO_ACE_14
+#define DATE_TEXT_TOP 4
+#endif
 
 enum {
   PERSIST_LAT = 1,
@@ -162,6 +200,11 @@ static double wrap_deg(double d) {
 // of the perimeter: psi is degrees clockwise from the top, so 90 degrees is
 // always the middle of the right edge whatever the aspect ratio.
 static GPoint ring_point(GPoint centre, double a, double b, double psi) {
+#if defined(PBL_ROUND)
+  // A circle of radius a (a and b are equal on a round screen).
+  double rad = psi * 0.017453292519943295;
+  return GPoint(centre.x + round_px(a * astro_sin(rad)), centre.y - round_px(a * astro_cos(rad)));
+#endif
   psi = wrap_deg(psi);
   int quadrant = (int)(psi / 90.0);
   double walk = (psi - quadrant * 90.0) / 90.0 * (a + b);
@@ -191,6 +234,10 @@ static void fill_tab(GContext *ctx, GPoint centre, double outer_a, double outer_
   int count = 0;
   double start = psi - half, end = psi + half;
   angles[count++] = start;
+#if defined(PBL_ROUND)
+  // A circle has no corners: a few points along the arc instead.
+  for (int i = 1; i < 4; i++) angles[count++] = start + (end - start) * i / 4.0;
+#else
   double corner = 90.0 * outer_a / (outer_a + outer_b);
   const double corners[4] = {corner, 180.0 - corner, 180.0 + corner, 360.0 - corner};
   for (int turn = -1; turn <= 1; turn++) {
@@ -199,6 +246,7 @@ static void fill_tab(GContext *ctx, GPoint centre, double outer_a, double outer_
       if (c > start && c < end && count < 5) angles[count++] = c;
     }
   }
+#endif
   angles[count++] = end;
 
   GPoint points[12];
@@ -277,7 +325,14 @@ static bool below_horizon(double psi) {
   return psi > 90.0 && psi < 270.0;
 }
 
+// Black-and-white screens dither colours into a speckle that hides the
+// glyphs, so there every tab and icon is plain white.
+#define INK(colour) PBL_IF_COLOR_ELSE(colour, GColorWhite)
+
 static GColor body_color(int body) {
+#if defined(PBL_BW)
+  return GColorWhite;
+#endif
   switch (body) {
     case BODY_SUN: return GColorChromeYellow;
     case BODY_MOON: return GColorWhite;
@@ -397,7 +452,7 @@ static double tab_psi(int id) { return id < BODY_COUNT ? s_sky.psi[id] : s_sky.s
 static GColor tab_color(int id) {
   static const uint8_t sat_colours[SAT_COUNT] = {GColorCyanARGB8, GColorPictonBlueARGB8,
                                                  GColorLightGrayARGB8};
-  return id < BODY_COUNT ? body_color(id) : (GColor){.argb = sat_colours[id - BODY_COUNT]};
+  return id < BODY_COUNT ? body_color(id) : INK(((GColor){.argb = sat_colours[id - BODY_COUNT]}));
 }
 
 static bool tab_below(int id) { return below_horizon(tab_psi(id)); }
@@ -491,6 +546,9 @@ static void corner_quarter(double a, double b, double r, double walk, double *x,
 // own normal. Walking the true outline keeps a constellation's shape, rather
 // than smearing it round the corners.
 static GPoint band_point(GPoint centre, double a, double b, double r, double psi, double offset) {
+#if defined(PBL_ROUND)
+  return ring_point(centre, a + offset, b + offset, psi);
+#endif
   psi = wrap_deg(psi);
   int quadrant = (int)(psi / 90.0);
   double quarter = (a - r) + 1.5707963267948966 * r + (b - r);
@@ -575,8 +633,8 @@ static void draw_digits(GContext *ctx, const char *text, int x, int w) {
 // An upright cell whose right side the digits cover.
 static void draw_battery_icon(GContext *ctx, int digits_x) {
   int left = digits_x - s_readout_lead[READOUT_BATTERY], top = READOUT_DIGIT_TOP - 7;
-  graphics_context_set_fill_color(ctx, s_battery <= 20 ? GColorRed
-                                       : (s_charging ? GColorYellow : GColorGreen));
+  graphics_context_set_fill_color(ctx, INK(s_battery <= 20 ? GColorRed
+                                           : (s_charging ? GColorYellow : GColorGreen)));
   graphics_fill_rect(ctx, GRect(left + 3, top - 3, 6, 3), 0, GCornerNone);
   graphics_fill_rect(ctx, GRect(left, top, 12, 2), 0, GCornerNone);
   graphics_fill_rect(ctx, GRect(left, top, 2, 24), 0, GCornerNone);
@@ -596,9 +654,9 @@ static void cloud_shape(GContext *ctx, GPoint o, int grow) {
 static void draw_weather_icon(GContext *ctx, int digits_x) {
   GPoint o = GPoint(digits_x - s_readout_lead[READOUT_WEATHER] - 2, READOUT_DIGIT_TOP - 14);
   int code = (int)s_settings.weather_code;
-  GColor blue = GColorVividCerulean;
+  GColor blue = INK(GColorVividCerulean);
   if (code <= 1) {
-    graphics_context_set_stroke_color(ctx, GColorChromeYellow);
+    graphics_context_set_stroke_color(ctx, INK(GColorChromeYellow));
     graphics_context_set_stroke_width(ctx, 2);
     GPoint c = GPoint(o.x + 30, o.y + 8);
     graphics_draw_circle(ctx, c, 6);
@@ -629,7 +687,7 @@ static void draw_weather_icon(GContext *ctx, int digits_x) {
     for (int i = 0; i < 2; i++) graphics_fill_circle(ctx, GPoint(o.x + 31 + i * 5, o.y + 25), 1);
   }
   if (code >= 95) {
-    graphics_context_set_stroke_color(ctx, GColorYellow);
+    graphics_context_set_stroke_color(ctx, INK(GColorYellow));
     graphics_draw_line(ctx, GPoint(o.x + 33, o.y + 17), GPoint(o.x + 29, o.y + 23));
     graphics_draw_line(ctx, GPoint(o.x + 29, o.y + 23), GPoint(o.x + 34, o.y + 23));
     graphics_draw_line(ctx, GPoint(o.x + 34, o.y + 23), GPoint(o.x + 30, o.y + 29));
@@ -652,7 +710,7 @@ static void heart_shape(GContext *ctx, GPoint o, int grow) {
 // lobe shows above them.
 static void draw_heart_icon(GContext *ctx, int digits_x) {
   GPoint o = GPoint(digits_x - s_readout_lead[READOUT_HEART] - 2, READOUT_DIGIT_TOP - 15);
-  graphics_context_set_fill_color(ctx, GColorFolly);
+  graphics_context_set_fill_color(ctx, INK(GColorFolly));
   heart_shape(ctx, o, 0);
   graphics_context_set_fill_color(ctx, GColorBlack);
   heart_shape(ctx, o, -2);
@@ -661,7 +719,7 @@ static void draw_heart_icon(GContext *ctx, int digits_x) {
 // Two footprints, one a step ahead of the other, left of the digits.
 static void draw_steps_icon(GContext *ctx, int digits_x) {
   int left = digits_x - s_readout_lead[READOUT_STEPS], top = READOUT_DIGIT_TOP;
-  graphics_context_set_fill_color(ctx, GColorOrange);
+  graphics_context_set_fill_color(ctx, INK(GColorOrange));
   graphics_fill_rect(ctx, GRect(left, top - 2, 5, 9), 2, GCornersAll);
   graphics_fill_rect(ctx, GRect(left, top + 9, 5, 4), 1, GCornersAll);
   graphics_fill_rect(ctx, GRect(left + 6, top - 9, 5, 9), 2, GCornersAll);
@@ -744,9 +802,13 @@ static void canvas_update(Layer *layer, GContext *ctx) {
   draw_ring(ctx, centre, hw, hh);
 
   // Cuts the tabs' inner ends to the panel's rounded outline.
-  GRect panel = GRect(PANEL_X, PANEL_Y, bounds.size.w - 2 * PANEL_X, bounds.size.h - 2 * PANEL_Y);
   graphics_context_set_fill_color(ctx, GColorBlack);
+#if defined(PBL_ROUND)
+  graphics_fill_circle(ctx, centre, (uint16_t)(hw - PANEL_X));
+#else
+  GRect panel = GRect(PANEL_X, PANEL_Y, bounds.size.w - 2 * PANEL_X, bounds.size.h - 2 * PANEL_Y);
   graphics_fill_rect(ctx, panel, PANEL_RADIUS, GCornersAll);
+#endif
 
   draw_ring_glyphs(ctx, centre, hw, hh);
   draw_constellations(ctx, centre, hw, hh);
@@ -1044,9 +1106,9 @@ static void window_load(Window *window) {
 static void window_unload(Window *window) { layer_destroy(s_canvas); }
 
 static void init(void) {
-  s_font_time = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_NADIR_CLOCK_54));
+  s_font_time = fonts_load_custom_font(resource_get_handle(CLOCK_FONT));
   s_font_small = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_BRUNO_ACE_21));
-  s_font_date = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_BRUNO_ACE_19));
+  s_font_date = fonts_load_custom_font(resource_get_handle(DATE_FONT));
   s_font_glyph = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_NOTO_16));
 
   load_settings();

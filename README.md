@@ -99,7 +99,7 @@ pebble install --emulator emery       # try it in the emulator
 pebble install --phone <phone-ip>     # or on the watch, via the phone app's developer connection
 ```
 
-The build fetches the settings library (pebble-clay) from npm.
+The build fetches the settings library (Rebble's Clay, `@rebble/clay`) from npm.
 
 ### Building on Windows through WSL
 
@@ -144,6 +144,6 @@ where `<wsl-host>` is the Windows side of WSL's network (`ip route` in WSL).
 
 Nadir's own code is under the [MIT licence](LICENSE). It uses Bruno Ace and
 Noto Sans Symbols (SIL Open Font License 1.1), d3-celestial's constellation
-lines (BSD 3-Clause) and pebble-clay (MIT); weather data is by Open-Meteo.com
+lines (BSD 3-Clause) and Clay (MIT); weather data is by Open-Meteo.com
 (CC BY 4.0). Full notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 and [resources/fonts/LICENSES.md](resources/fonts/LICENSES.md).

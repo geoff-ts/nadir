@@ -51,10 +51,11 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## Settings page: pebble-clay (MIT)
+## Settings page: Clay (MIT)
 
-The settings page is built with [pebble-clay](https://github.com/pebble/clay),
-which the build bundles into the app's phone-side JavaScript.
+The settings page is built with Clay, in Rebble's maintained version
+([@rebble/clay](https://github.com/pebble-dev/clay)), which the build bundles
+into the app's phone-side JavaScript.
 
 ```
 The MIT License (MIT)

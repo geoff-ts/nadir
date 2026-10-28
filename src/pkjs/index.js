@@ -4,7 +4,7 @@
 // The watch does all the sky maths itself, so it keeps working offline.
 
 // The settings page; Clay sends its choices to the watch when it is saved.
-var Clay = require('pebble-clay');
+var Clay = require('@rebble/clay');
 var clay = new Clay(require('./config.json'));
 
 // Each satellite's NORAD catalogue number and the message key its elements go in.
